@@ -192,6 +192,13 @@ namespace Player
             if (Input.GetKeyDown(attackKey))
             {
                 combatSystem.PerformAttack();
+                
+                // 触发武器视觉动画
+                var weaponVisual = GetComponent<Player.WeaponVisualDisplay>();
+                if (weaponVisual != null)
+                {
+                    weaponVisual.PlayAttackAnimation();
+                }
             }
         }
         

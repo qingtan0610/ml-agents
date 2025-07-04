@@ -139,6 +139,23 @@ namespace Combat
                 {
                     proj.Initialize(weapon.Damage, gameObject, weapon.EffectRadius, weapon.IsPiercing, weapon.MaxPierceTargets);
                 }
+                
+                // 自动缩放弹药大小
+                var spriteRenderer = projectile.GetComponent<SpriteRenderer>();
+                if (spriteRenderer != null && spriteRenderer.sprite != null)
+                {
+                    float maxDimension = Mathf.Max(spriteRenderer.sprite.rect.width, spriteRenderer.sprite.rect.height);
+                    float pixelsPerUnit = spriteRenderer.sprite.pixelsPerUnit;
+                    float currentWorldSize = maxDimension / pixelsPerUnit;
+                    
+                    // 让弹药大小合理（目标大小16-24像素，取决于弹药类型）
+                    float targetSize = 20f; // 弹药目标大小20像素
+                    float targetWorldSize = targetSize / 32f; // 假设基础PPU是32
+                    float scaleFactor = targetWorldSize / currentWorldSize;
+                    
+                    projectile.transform.localScale = Vector3.one * scaleFactor;
+                    Debug.Log($"[Combat] Auto-scaled projectile from {maxDimension}px to target {targetSize}px (scale: {scaleFactor})");
+                }
             }
             else
             {

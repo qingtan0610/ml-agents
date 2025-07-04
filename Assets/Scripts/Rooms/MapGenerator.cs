@@ -757,6 +757,51 @@ namespace Rooms
             {
                 Destroy(child.gameObject);
             }
+            
+            // 清理场景中所有的掉落物
+            ClearAllPickups();
+        }
+        
+        /// <summary>
+        /// 清理场景中所有的掉落物
+        /// </summary>
+        private void ClearAllPickups()
+        {
+            // 查找所有UnifiedPickup组件
+            var pickups = FindObjectsOfType<Loot.UnifiedPickup>();
+            foreach (var pickup in pickups)
+            {
+                if (pickup != null)
+                {
+                    Destroy(pickup.gameObject);
+                }
+            }
+            
+            // 清理可能遗留的其他拾取物
+            var legacyPickups = FindObjectsOfType<Loot.Pickup>();
+            foreach (var pickup in legacyPickups)
+            {
+                if (pickup != null)
+                {
+                    Destroy(pickup.gameObject);
+                }
+            }
+            
+            // 清理名称包含"Pickup"的GameObject
+            var allObjects = FindObjectsOfType<GameObject>();
+            foreach (var obj in allObjects)
+            {
+                if (obj.name.Contains("Pickup") || obj.name.Contains("pickup"))
+                {
+                    // 确保不是预制体引用，只清理场景中的实例
+                    if (obj.scene.IsValid())
+                    {
+                        Destroy(obj);
+                    }
+                }
+            }
+            
+            Debug.Log("[MapGenerator] Cleared all pickups from scene");
         }
         
         /// <summary>

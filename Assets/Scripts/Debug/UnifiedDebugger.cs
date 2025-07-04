@@ -216,7 +216,16 @@ namespace PlayerDebug
                 sb.AppendLine("--- Inventory ---");
                 sb.AppendLine($"Used/Total: {GetUsedSlots()}/{inventory.Size}");
                 var weapon = inventory.EquippedWeapon;
-                sb.AppendLine($"Weapon: {(weapon != null ? weapon.ItemName : "Unarmed")}");
+                if (weapon != null)
+                {
+                    sb.AppendLine($"Weapon: {weapon.ItemName}");
+                    sb.AppendLine($"Type: {weapon.WeaponType}, Shape: {weapon.AttackShape}");
+                    sb.AppendLine($"Damage: {weapon.Damage}, Speed: {weapon.AttackSpeed}");
+                }
+                else
+                {
+                    sb.AppendLine("Weapon: Unarmed");
+                }
                 sb.AppendLine();
                 
                 // Show items in inventory
@@ -250,7 +259,7 @@ namespace PlayerDebug
             sb.AppendLine("H:Damage J:Heal I:Items");
             sb.AppendLine("M:Gold B:Ammo R:Respawn");
             sb.AppendLine("K:Kill(Test) T:Hunger Death");
-            sb.AppendLine("1-0:Hotbar");
+            sb.AppendLine("1-0:Hotbar Mouse:Attack(with visual)");
             
             return sb.ToString();
         }
