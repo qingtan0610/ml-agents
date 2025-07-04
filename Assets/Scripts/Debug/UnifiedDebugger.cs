@@ -90,8 +90,8 @@ namespace PlayerDebug
                 if (testWeapon != null) inventory.AddItem(testWeapon, 1);
             }
             
-            // G - 添加金币
-            if (Input.GetKeyDown(KeyCode.G) && currencyManager != null)
+            // M - 添加金币（改为M键避免与丢弃冲突）
+            if (Input.GetKeyDown(KeyCode.M) && currencyManager != null)
             {
                 currencyManager.AddGold(100);
             }
@@ -140,6 +140,21 @@ namespace PlayerDebug
                 
                 // 立即检查结果
                 Debug.Log($"[UnifiedDebugger] After kill - Health: {aiStats.GetStat(StatType.Health)}, IsDead: {aiStats.IsDead}");
+            }
+            
+            // T - 测试饥饿死亡
+            if (Input.GetKeyDown(KeyCode.T) && aiStats != null && !aiStats.IsDead)
+            {
+                Debug.Log("[UnifiedDebugger] Testing hunger death");
+                Debug.Log($"[UnifiedDebugger] Before hunger kill - Hunger: {aiStats.GetStat(StatType.Hunger)}, IsDead: {aiStats.IsDead}");
+                Debug.Log($"[UnifiedDebugger] Config exists: {aiStats.Config != null}");
+                Debug.Log($"[UnifiedDebugger] Is stats dead flag: {aiStats.IsDead}");
+                
+                // 直接设置饥饿值为0而不是减少1000
+                aiStats.SetStat(StatType.Hunger, 0f, StatChangeReason.Natural);
+                
+                // 等待一帧让CheckDeathConditions执行
+                StartCoroutine(CheckHungerDeathAfterFrame());
             }
             
             // 数字键1-9 - 使用对应槽位的物品
@@ -233,9 +248,9 @@ namespace PlayerDebug
             sb.AppendLine();
             sb.AppendLine("--- Hotkeys ---");
             sb.AppendLine("H:Damage J:Heal I:Items");
-            sb.AppendLine("G:Gold B:Ammo R:Respawn");
-            sb.AppendLine("K:Kill(Test) F9:DeathDebug");
-            sb.AppendLine("1-0:Hotbar TAB:Inventory");
+            sb.AppendLine("M:Gold B:Ammo R:Respawn");
+            sb.AppendLine("K:Kill(Test) T:Hunger Death");
+            sb.AppendLine("1-0:Hotbar");
             
             return sb.ToString();
         }
@@ -282,6 +297,15 @@ namespace PlayerDebug
             {
                 UnityEngine.Debug.Log($"[UnifiedDebugger] Failed to use item: {item.ItemName}");
             }
+        }
+        
+        private System.Collections.IEnumerator CheckHungerDeathAfterFrame()
+        {
+            yield return null; // 等待一帧
+            Debug.Log($"[UnifiedDebugger] After frame - Hunger: {aiStats.GetStat(StatType.Hunger)} (display), {aiStats.GetRawStat(StatType.Hunger)} (raw), IsDead: {aiStats.IsDead}");
+            
+            yield return new WaitForSeconds(0.1f); // 再等一小段时间
+            Debug.Log($"[UnifiedDebugger] After 0.1s - Hunger: {aiStats.GetStat(StatType.Hunger)} (display), {aiStats.GetRawStat(StatType.Hunger)} (raw), IsDead: {aiStats.IsDead}");
         }
         
         private void OnDestroy()

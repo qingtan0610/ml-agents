@@ -153,20 +153,21 @@ namespace AI.Stats
             
             StatType? deathCause = null;
             
-            if (currentStats.ContainsKey(StatType.Health) && currentStats[StatType.Health] <= 0)
+            // 使用GetRawStat获取真实值（包括负值）进行死亡检测
+            if (currentStats.ContainsKey(StatType.Health) && GetRawStat(StatType.Health) <= 0)
             {
                 deathCause = StatType.Health;
-                Debug.Log($"[AIStats] Death condition met: Health={currentStats[StatType.Health]}");
+                Debug.Log($"[AIStats] Death condition met: Health={GetRawStat(StatType.Health)} (raw), {GetStat(StatType.Health)} (display)");
             }
-            else if (currentStats.ContainsKey(StatType.Hunger) && currentStats[StatType.Hunger] <= 0)
+            else if (currentStats.ContainsKey(StatType.Hunger) && GetRawStat(StatType.Hunger) <= 0)
             {
                 deathCause = StatType.Hunger;
-                Debug.Log($"[AIStats] Death condition met: Hunger={currentStats[StatType.Hunger]}");
+                Debug.Log($"[AIStats] Death condition met: Hunger={GetRawStat(StatType.Hunger)} (raw), {GetStat(StatType.Hunger)} (display)");
             }
-            else if (currentStats.ContainsKey(StatType.Thirst) && currentStats[StatType.Thirst] <= 0)
+            else if (currentStats.ContainsKey(StatType.Thirst) && GetRawStat(StatType.Thirst) <= 0)
             {
                 deathCause = StatType.Thirst;
-                Debug.Log($"[AIStats] Death condition met: Thirst={currentStats[StatType.Thirst]}");
+                Debug.Log($"[AIStats] Death condition met: Thirst={GetRawStat(StatType.Thirst)} (raw), {GetStat(StatType.Thirst)} (display)");
             }
             
             if (deathCause.HasValue && !isDead)
@@ -260,7 +261,39 @@ namespace AI.Stats
             
             // 限制在最大值范围内
             finalValue = ClampStatValue(statType, finalValue);
-            return finalValue;
+            
+            // 为了UI显示，将负值显示为0（但内部保持负值用于死亡检测）
+            return Mathf.Max(0f, finalValue);
+        }
+        
+        /// <summary>
+        /// 获取原始属性值（包括负值），用于死亡检测等内部逻辑
+        /// </summary>
+        public float GetRawStat(StatType statType)
+        {
+            if (!currentStats.ContainsKey(statType)) return 0f;
+            
+            float baseValue = currentStats[statType];
+            float finalValue = baseValue;
+            
+            // 应用修改器
+            var modifiers = activeModifiers.Values.Where(m => m.TargetStat == statType);
+            foreach (var modifier in modifiers)
+            {
+                if (modifier.ModifierType == StatModifierType.Flat)
+                {
+                    finalValue += modifier.Value;
+                }
+                else // Percentage
+                {
+                    finalValue *= (1 + modifier.Value / 100f);
+                }
+            }
+            
+            // 限制在最大值范围内（允许负值）
+            finalValue = ClampStatValue(statType, finalValue);
+            
+            return finalValue; // 返回真实值，包括负值
         }
         
         public float GetStatPercentage(StatType statType)
@@ -391,7 +424,18 @@ namespace AI.Stats
         private float ClampStatValue(StatType statType, float value)
         {
             float max = GetMaxStatValue(statType);
-            return Mathf.Clamp(value, 0f, max);
+            
+            // 对于生命关键属性，允许负值以触发死亡检测
+            // 但其他属性（如弹药、护甲）仍然限制在0以上
+            switch (statType)
+            {
+                case StatType.Health:
+                case StatType.Hunger:
+                case StatType.Thirst:
+                    return Mathf.Clamp(value, float.MinValue, max);
+                default:
+                    return Mathf.Clamp(value, 0f, max);
+            }
         }
         
         private void HandleMoodChange(MoodChangeEventArgs args)

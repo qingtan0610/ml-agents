@@ -535,6 +535,9 @@ namespace Enemy
             currentHealth = Mathf.Min(currentHealth + amount, maxHealth);
         }
         
+        // 静态事件，用于通知房间系统敌人死亡
+        public static event System.Action<GameObject, Vector3> OnEnemyDied;
+        
         public virtual void Die()
         {
             if (isDead) return;
@@ -551,7 +554,10 @@ namespace Enemy
             // 掉落物品
             DropLoot();
             
-            Debug.Log($"{name} died!");
+            // 通知房间系统敌人死亡（在销毁前发送）
+            OnEnemyDied?.Invoke(gameObject, transform.position);
+            
+            Debug.Log($"{name} died at position {transform.position}!");
             
             // 播放死亡效果后销毁
             Destroy(gameObject, 1f);

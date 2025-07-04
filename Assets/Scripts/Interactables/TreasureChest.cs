@@ -190,17 +190,20 @@ namespace Interactables
                 }
             }
             
-            // 使用掉落表生成物品
+            // 使用掉落表生成物品 - 与敌人逻辑保持一致
             if (lootTable != null)
             {
                 Debug.Log("[TreasureChest] Generating loot from loot table...");
-                var loot = lootTable.GenerateLoot(1f); // 可以传入幸运值
+                // 使用与敌人相同的参数：lootMultiplier - 1f，宝箱应该有更好的掉落所以使用2.0 - 1f = 1.0
+                var loot = lootTable.GenerateLoot(1.0f); // 比敌人的0f多1点幸运加成
                 
-                // 生成物品（金币弹药通过guaranteedItems配置）
+                // 生成物品
                 foreach (var drop in loot.items)
                 {
                     SpawnItemPickup(drop.item, drop.quantity, spawnPosition);
                 }
+                
+                Debug.Log($"[TreasureChest] Dropped {loot.items.Count} items from loot table");
             }
             
             Debug.Log($"[TreasureChest] Chest opened by {interactor.name}!");

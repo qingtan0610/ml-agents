@@ -94,8 +94,8 @@ namespace Inventory
                 }
             }
             
-            // G - Add gold
-            if (Input.GetKeyDown(KeyCode.G))
+            // M - Add gold (改为M键避免与丢弃冲突)
+            if (Input.GetKeyDown(KeyCode.M))
             {
                 if (currencyManager != null)
                 {
@@ -194,8 +194,9 @@ namespace Inventory
             
             sb.AppendLine();
             sb.AppendLine("--- Controls ---");
-            sb.AppendLine("1-5: Select hotbar | Q: Use item | I: Add test items");
-            sb.AppendLine("G: Add gold | B: Add bullets | S: Sort | E: Swap test");
+            sb.AppendLine("1-5: Select hotbar | C: Use item | Q: Drop item | I: Add test items");
+            sb.AppendLine("M: Add gold | B: Add bullets | S: Sort | E: Swap test");
+            sb.AppendLine("Shift+1-0: Drop specific slot item");
             sb.AppendLine("F2: Toggle debug");
             
             return sb.ToString();

@@ -73,11 +73,34 @@ namespace Rooms.Core
             // 生成房间内容
             SpawnRoomContents();
             
+            // 监听全局敌人死亡事件
+            Enemy.Enemy2D.OnEnemyDied += HandleGlobalEnemyDeath;
+            
             // 怪物房间不再在初始化时锁门，而是等玩家进入后才锁门
             // if (roomType == RoomType.Monster && !isCleared)
             // {
             //     LockAllDoors();
             // }
+        }
+        
+        private void OnDestroy()
+        {
+            // 取消监听全局敌人死亡事件
+            Enemy.Enemy2D.OnEnemyDied -= HandleGlobalEnemyDeath;
+        }
+        
+        /// <summary>
+        /// 处理全局敌人死亡事件
+        /// </summary>
+        private void HandleGlobalEnemyDeath(GameObject deadEnemy, Vector3 deathPosition)
+        {
+            // 检查这个敌人是否属于当前房间
+            if (activeEnemies.Contains(deadEnemy))
+            {
+                Debug.Log($"[Room {gridPosition}] Enemy {deadEnemy.name} died at {deathPosition}, removing from active list");
+                activeEnemies.Remove(deadEnemy);
+                CheckRoomCleared();
+            }
         }
         
         /// <summary>
@@ -586,6 +609,21 @@ namespace Rooms.Core
         /// </summary>
         public void OnPlayerEnter(GameObject player, DoorDirection entryDirection)
         {
+            // 检查玩家是否真的在这个房间内 (房间大小16x16，所以半径约8)
+            Vector3 playerPos = player.transform.position;
+            Vector3 roomCenter = transform.position;
+            float roomHalfSize = 8f; // 房间半边长
+            
+            // 检查玩家是否在房间边界内
+            bool playerInRoom = Mathf.Abs(playerPos.x - roomCenter.x) <= roomHalfSize && 
+                               Mathf.Abs(playerPos.y - roomCenter.y) <= roomHalfSize;
+            
+            if (!playerInRoom)
+            {
+                Debug.Log($"[Room] Player at {playerPos} is outside room {gridPosition} (center: {roomCenter})");
+                return; // 玩家还没真正进入房间，不触发房间逻辑
+            }
+            
             if (!isExplored)
             {
                 isExplored = true;

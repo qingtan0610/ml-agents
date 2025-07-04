@@ -271,48 +271,70 @@ namespace Inventory
             bool isShiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
             
             // Hotbar key bindings (1-9)
-            for (int i = 0; i < Mathf.Min(9, hotbarSize); i++)
+            for (int i = 0; i < 9; i++) // 改为固定9个键，不受hotbarSize限制
             {
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i))
                 {
                     if (isShiftHeld)
                     {
-                        // Shift+数字键 = 丢弃物品
-                        Debug.Log($"[Inventory] Shift+{i+1} pressed, dropping item from slot {i}");
-                        DropItem(i, 1);
+                        // Shift+数字键 = 丢弃物品（可以操作所有槽位，不限于hotbar）
+                        if (i < slots.Count) // 确保槽位存在
+                        {
+                            Debug.Log($"[Inventory] Shift+{i+1} pressed, dropping item from slot {i}");
+                            DropItem(i, 1);
+                        }
+                        else
+                        {
+                            Debug.Log($"[Inventory] Shift+{i+1} pressed, but slot {i} doesn't exist (inventory size: {slots.Count})");
+                        }
                     }
                     else
                     {
-                        SelectHotbarSlot(i);
+                        // 普通选择仍然受hotbarSize限制
+                        if (i < hotbarSize)
+                        {
+                            SelectHotbarSlot(i);
+                        }
                     }
                 }
             }
             
-            // Hotbar key 0 for slot 10
-            if (hotbarSize >= 10 && Input.GetKeyDown(KeyCode.Alpha0))
+            // Key 0 for slot 10 (index 9)
+            if (Input.GetKeyDown(KeyCode.Alpha0))
             {
                 if (isShiftHeld)
                 {
-                    // Shift+0 = 丢弃第10格物品
-                    Debug.Log("[Inventory] Shift+0 pressed, dropping item from slot 9");
-                    DropItem(9, 1);
+                    // Shift+0 = 丢弃第10格物品（可以操作所有槽位，不限于hotbar）
+                    if (9 < slots.Count) // 确保第10个槽位存在
+                    {
+                        Debug.Log("[Inventory] Shift+0 pressed, dropping item from slot 9");
+                        DropItem(9, 1);
+                    }
+                    else
+                    {
+                        Debug.Log($"[Inventory] Shift+0 pressed, but slot 9 doesn't exist (inventory size: {slots.Count})");
+                    }
                 }
                 else
                 {
-                    SelectHotbarSlot(9);
+                    // 普通选择仍然受hotbarSize限制
+                    if (hotbarSize >= 10)
+                    {
+                        SelectHotbarSlot(9);
+                    }
                 }
             }
             
-            // Use selected item
-            if (Input.GetKeyDown(KeyCode.Q))
+            // Use selected item with C key
+            if (Input.GetKeyDown(KeyCode.C))
             {
                 UseSelectedHotbarItem();
             }
             
-            // Drop selected item
-            if (Input.GetKeyDown(KeyCode.G))
+            // Drop selected item with Q key
+            if (Input.GetKeyDown(KeyCode.Q))
             {
-                Debug.Log($"[Inventory] G pressed, dropping item from selected slot {selectedHotbarSlot}");
+                Debug.Log($"[Inventory] Q pressed, dropping item from selected slot {selectedHotbarSlot}");
                 DropItem(selectedHotbarSlot, 1);
             }
         }
@@ -323,17 +345,30 @@ namespace Inventory
         
         public bool DropItem(int slotIndex, int quantity = 1)
         {
-            if (slotIndex < 0 || slotIndex >= slots.Count) return false;
+            Debug.Log($"[Inventory] DropItem called: slot={slotIndex}, quantity={quantity}");
+            
+            if (slotIndex < 0 || slotIndex >= slots.Count) 
+            {
+                Debug.LogWarning($"[Inventory] Invalid slot index {slotIndex} (valid range: 0-{slots.Count-1})");
+                return false;
+            }
             
             var slot = slots[slotIndex];
-            if (slot.IsEmpty) return false;
+            if (slot.IsEmpty) 
+            {
+                Debug.LogWarning($"[Inventory] Cannot drop from empty slot {slotIndex}");
+                return false;
+            }
             
             var item = slot.Item;
             int actualQuantity = Mathf.Min(quantity, slot.Quantity);
+            Debug.Log($"[Inventory] Dropping {actualQuantity}x {item.ItemName} from slot {slotIndex}");
             
             // 如果是装备中的武器，先卸下
-            if (item is WeaponItem weapon && weapon == equippedWeapon)
+            if (item is WeaponItem weapon && equippedWeapon != null && 
+                weapon.ItemId == equippedWeapon.ItemId)
             {
+                Debug.Log($"[Inventory] Unequipping weapon {weapon.ItemName} before dropping");
                 UnequipWeapon();
             }
             
@@ -342,7 +377,12 @@ namespace Inventory
             {
                 // 从背包移除
                 RemoveItemAt(slotIndex, actualQuantity);
+                Debug.Log($"[Inventory] Successfully dropped {actualQuantity}x {item.ItemName}");
                 return true;
+            }
+            else
+            {
+                Debug.LogError($"[Inventory] Failed to create dropped item for {item.ItemName}");
             }
             
             return false;
@@ -362,12 +402,27 @@ namespace Inventory
         
         private bool CreateDroppedItem(ItemBase item, int quantity)
         {
+            if (item == null)
+            {
+                Debug.LogError("[Inventory] Cannot drop null item");
+                return false;
+            }
+            
+            if (quantity <= 0)
+            {
+                Debug.LogError($"[Inventory] Cannot drop {item.ItemName} with quantity {quantity}");
+                return false;
+            }
+            
+            Debug.Log($"[Inventory] Creating dropped item: {quantity}x {item.ItemName}");
+            
             // 优先使用Inspector中指定的预制体
             GameObject pickupPrefab = unifiedPickupPrefab;
             
             // 如果没有指定，尝试从Resources加载
             if (pickupPrefab == null)
             {
+                Debug.Log("[Inventory] No prefab assigned, trying to load from Resources");
                 pickupPrefab = Resources.Load<GameObject>("Prefabs/Pickups/UnifiedPickup");
                 if (pickupPrefab == null)
                 {
@@ -383,30 +438,50 @@ namespace Inventory
                     Debug.LogError("[Inventory] UnifiedPickup prefab not found! Please assign it in the Inspector or place it in Resources folder");
                     return false;
                 }
+                else
+                {
+                    Debug.Log($"[Inventory] Loaded pickup prefab from Resources: {pickupPrefab.name}");
+                }
             }
             
-            // 计算掉落位置（在玩家附近随机位置）
+            // 计算掉落位置（在玩家附近随机位置，避免重叠）
             Vector2 dropDirection = UnityEngine.Random.insideUnitCircle.normalized;
             if (dropDirection == Vector2.zero) dropDirection = Vector2.right;
             
-            float dropDistance = UnityEngine.Random.Range(0.5f, 1f); // 减小掉落距离
+            float dropDistance = UnityEngine.Random.Range(0.5f, 1f);
             Vector3 dropPosition = transform.position + (Vector3)(dropDirection * dropDistance);
             
+            Debug.Log($"[Inventory] Drop position calculated: {dropPosition}");
+            
             // 创建拾取物
-            var droppedItem = Instantiate(pickupPrefab, dropPosition, Quaternion.identity);
+            GameObject droppedItem = null;
+            try
+            {
+                droppedItem = Instantiate(pickupPrefab, dropPosition, Quaternion.identity);
+                Debug.Log($"[Inventory] Instantiated pickup object: {droppedItem.name}");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[Inventory] Failed to instantiate pickup prefab: {e.Message}");
+                return false;
+            }
+            
             var pickup = droppedItem.GetComponent<Loot.UnifiedPickup>();
             
             if (pickup != null)
             {
+                Debug.Log($"[Inventory] Found UnifiedPickup component, initializing with {quantity}x {item.ItemName}");
                 pickup.Initialize(item, quantity);
                 
-                // 不添加推力，让物品直接掉在地上
-                Debug.Log($"[Inventory] Dropped {quantity}x {item.ItemName}");
+                Debug.Log($"[Inventory] Successfully dropped {quantity}x {item.ItemName} at {dropPosition}");
                 return true;
             }
-            
-            Destroy(droppedItem);
-            return false;
+            else
+            {
+                Debug.LogError($"[Inventory] UnifiedPickup component not found on instantiated object {droppedItem.name}");
+                Destroy(droppedItem);
+                return false;
+            }
         }
         
         #endregion

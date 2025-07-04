@@ -265,8 +265,14 @@ namespace Loot
         
         private void TryPickup(GameObject picker)
         {
-            if (isPicked || item == null) return;
+            if (isPicked || item == null) 
+            {
+                if (isPicked) Debug.Log($"[UnifiedPickup] Already picked up: {gameObject.name}");
+                if (item == null) Debug.Log($"[UnifiedPickup] No item assigned: {gameObject.name}");
+                return;
+            }
             
+            Debug.Log($"[UnifiedPickup] Attempting to pickup {item.ItemName} x{quantity}");
             bool success = false;
             
             // 检查是否是特殊消耗品（金币、弹药等）
@@ -286,21 +292,27 @@ namespace Loot
                 var inventory = picker.GetComponent<Inventory.Inventory>();
                 if (inventory != null)
                 {
+                    Debug.Log($"[UnifiedPickup] Attempting to add {quantity}x {item.ItemName} to inventory");
                     success = inventory.AddItem(item, quantity);
                     if (success)
                     {
-                        Debug.Log($"[UnifiedPickup] Added {quantity}x {item.ItemName} to inventory");
+                        Debug.Log($"[UnifiedPickup] Successfully added {quantity}x {item.ItemName} to inventory");
                     }
                     else
                     {
-                        Debug.Log("[UnifiedPickup] Inventory full!");
+                        Debug.LogWarning($"[UnifiedPickup] Failed to add {quantity}x {item.ItemName} to inventory - possibly full or invalid item");
                     }
+                }
+                else
+                {
+                    Debug.LogError($"[UnifiedPickup] No inventory component found on {picker.name}");
                 }
             }
             
             if (success)
             {
                 isPicked = true;
+                Debug.Log($"[UnifiedPickup] Pickup successful, marking as picked and destroying {gameObject.name}");
                 
                 // 播放拾取特效
                 if (pickupEffect != null)
@@ -308,8 +320,19 @@ namespace Loot
                     Instantiate(pickupEffect, transform.position, Quaternion.identity);
                 }
                 
-                // 销毁拾取物
-                Destroy(gameObject);
+                // 立即禁用碰撞器和渲染器，防止重复拾取
+                var collider = GetComponent<Collider2D>();
+                if (collider != null) collider.enabled = false;
+                
+                var renderer = GetComponent<SpriteRenderer>();
+                if (renderer != null) renderer.enabled = false;
+                
+                // 销毁拾取物（延迟一帧确保所有状态更新完成）
+                Destroy(gameObject, 0.1f);
+            }
+            else
+            {
+                Debug.LogWarning($"[UnifiedPickup] Pickup failed for {item?.ItemName ?? "unknown item"}");
             }
         }
         
