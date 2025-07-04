@@ -124,11 +124,11 @@ namespace Rooms
         /// </summary>
         private void PlaceRequiredRooms(RoomType[,] layout)
         {
-            // 必需的房间类型（移除传送房间，因为会在PlaceSpecialRooms中放置）
+            // 必需的房间类型（使用新的NPC房间类型）
             var requiredTypes = new List<RoomType>
             {
-                RoomType.Merchant,  // 至少一个商人
-                RoomType.Restaurant // 至少一个餐厅
+                RoomType.NPC,  // NPC房间（会随机生成各种NPC）
+                RoomType.NPC   // 多放置几个NPC房间确保有足够的服务
             };
             
             foreach (var type in requiredTypes)

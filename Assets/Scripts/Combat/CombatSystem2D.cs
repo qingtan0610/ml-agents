@@ -82,20 +82,28 @@ namespace Combat
             // 更新攻击冷却
             if (weapon != null)
             {
-                attackCooldown = 1f / weapon.AttackSpeed;
+                var upgradeManager = NPC.Managers.WeaponUpgradeManager.Instance;
+                float attackSpeed = upgradeManager.GetUpgradedAttackSpeed(weapon);
+                attackCooldown = 1f / attackSpeed;
             }
         }
         
         private void PerformMeleeAttack(WeaponItem weapon)
         {
+            // 获取强化后的属性
+            var upgradeManager = NPC.Managers.WeaponUpgradeManager.Instance;
+            float damage = upgradeManager.GetUpgradedDamage(weapon);
+            float range = upgradeManager.GetUpgradedAttackRange(weapon);
+            float critChance = upgradeManager.GetUpgradedCritChance(weapon);
+            
             PerformMeleeAttack(
-                weapon.Damage,
-                weapon.AttackRange,
+                damage,
+                range,
                 weapon.AttackShape,
                 weapon.SectorAngle,
                 weapon.RectangleWidth,
                 weapon.Knockback,
-                weapon.CriticalChance
+                critChance
             );
         }
         
@@ -137,7 +145,9 @@ namespace Combat
                 var proj = projectile.GetComponent<Projectile2D>();
                 if (proj != null)
                 {
-                    proj.Initialize(weapon.Damage, gameObject, weapon.EffectRadius, weapon.IsPiercing, weapon.MaxPierceTargets);
+                    var upgradeManager = NPC.Managers.WeaponUpgradeManager.Instance;
+                    float damage = upgradeManager.GetUpgradedDamage(weapon);
+                    proj.Initialize(damage, gameObject, weapon.EffectRadius, weapon.IsPiercing, weapon.MaxPierceTargets);
                 }
                 
                 // 自动缩放弹药大小
@@ -160,10 +170,15 @@ namespace Combat
             else
             {
                 // 即时命中扫描
-                RaycastHit2D hit = Physics2D.Raycast(transform.position, transform.up, weapon.AttackRange, targetLayers);
+                var upgradeManager = NPC.Managers.WeaponUpgradeManager.Instance;
+                float damage = upgradeManager.GetUpgradedDamage(weapon);
+                float range = upgradeManager.GetUpgradedAttackRange(weapon);
+                float critChance = upgradeManager.GetUpgradedCritChance(weapon);
+                
+                RaycastHit2D hit = Physics2D.Raycast(transform.position, transform.up, range, targetLayers);
                 if (hit.collider != null)
                 {
-                    ApplyDamageToTarget(hit.collider.gameObject, weapon.Damage, weapon.Knockback, weapon.CriticalChance);
+                    ApplyDamageToTarget(hit.collider.gameObject, damage, weapon.Knockback, critChance);
                 }
             }
         }

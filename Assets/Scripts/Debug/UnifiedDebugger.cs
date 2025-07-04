@@ -103,6 +103,13 @@ namespace PlayerDebug
                 ammoManager.AddAmmo(AmmoType.Arrows, 30);
             }
             
+            // G - 添加金币（开发测试）
+            if (Input.GetKeyDown(KeyCode.G) && currencyManager != null)
+            {
+                currencyManager.AddGold(100);
+                Debug.Log($"[UnifiedDebugger] Added 100 gold. Total: {currencyManager.CurrentGold}");
+            }
+            
             // R - 复活（如果死亡）
             if (Input.GetKeyDown(KeyCode.R) && aiStats != null)
             {
@@ -218,9 +225,22 @@ namespace PlayerDebug
                 var weapon = inventory.EquippedWeapon;
                 if (weapon != null)
                 {
-                    sb.AppendLine($"Weapon: {weapon.ItemName}");
+                    var upgradeManager = NPC.Managers.WeaponUpgradeManager.Instance;
+                    int upgradeLevel = upgradeManager.GetWeaponUpgradeLevel(weapon);
+                    
+                    sb.AppendLine($"Weapon: {weapon.ItemName}{(upgradeLevel > 0 ? $" +{upgradeLevel}" : "")}");
                     sb.AppendLine($"Type: {weapon.WeaponType}, Shape: {weapon.AttackShape}");
-                    sb.AppendLine($"Damage: {weapon.Damage}, Speed: {weapon.AttackSpeed}");
+                    
+                    // 显示强化后的属性
+                    float damage = upgradeManager.GetUpgradedDamage(weapon);
+                    float speed = upgradeManager.GetUpgradedAttackSpeed(weapon);
+                    float range = upgradeManager.GetUpgradedAttackRange(weapon);
+                    float crit = upgradeManager.GetUpgradedCritChance(weapon);
+                    
+                    sb.AppendLine($"Damage: {damage:F1}{(damage > weapon.Damage ? $" (+{damage - weapon.Damage:F1})" : "")}");
+                    sb.AppendLine($"Speed: {speed:F1}{(speed > weapon.AttackSpeed ? $" (+{speed - weapon.AttackSpeed:F1})" : "")}");
+                    if (range > weapon.AttackRange) sb.AppendLine($"Range: {range:F1} (+{range - weapon.AttackRange:F1})");
+                    if (crit > weapon.CriticalChance) sb.AppendLine($"Crit: {crit:P0} (+{(crit - weapon.CriticalChance):P0})");
                 }
                 else
                 {
@@ -257,7 +277,7 @@ namespace PlayerDebug
             sb.AppendLine();
             sb.AppendLine("--- Hotkeys ---");
             sb.AppendLine("H:Damage J:Heal I:Items");
-            sb.AppendLine("M:Gold B:Ammo R:Respawn");
+            sb.AppendLine("M:Gold B:Ammo G:+100Gold R:Respawn");
             sb.AppendLine("K:Kill(Test) T:Hunger Death");
             sb.AppendLine("1-0:Hotbar Mouse:Attack(with visual)");
             

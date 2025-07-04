@@ -26,6 +26,38 @@ namespace NPC.Core
         public NPCData Data => npcData;
         public bool IsInteracting => isInteracting;
         
+        /// <summary>
+        /// 设置NPC数据（用于运行时设置）
+        /// </summary>
+        public void SetNPCData(NPCData data)
+        {
+            if (data == null)
+            {
+                Debug.LogError($"[NPCBase] Attempting to set null NPCData on {name}");
+                return;
+            }
+            
+            // 如果预制体已经有npcData，并且和要设置的相同，就不需要覆盖
+            if (npcData != null && npcData == data)
+            {
+                Debug.Log($"[NPCBase] {name} already has the correct NPC data: {data.npcName}");
+                return;
+            }
+            
+            // 如果预制体有不同的npcData，优先使用预制体的设置（除非强制覆盖）
+            if (npcData != null)
+            {
+                Debug.LogWarning($"[NPCBase] {name} already has NPC data ({npcData.npcName}), keeping existing data instead of setting {data.npcName}");
+                return;
+            }
+            
+            npcData = data;
+            Debug.Log($"[NPCBase] Set NPC data on {name} to {data.npcName} ({data.npcType}), Data file: {data.name}");
+            
+            // 更新视觉效果
+            SetupVisuals();
+        }
+        
         protected virtual void Awake()
         {
             SetupComponents();

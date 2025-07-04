@@ -110,7 +110,8 @@ namespace NPC.Core
             var npcComponent = npc.GetComponent<NPCBase>();
             if (npcComponent != null)
             {
-                // 如果需要，可以在这里进行额外的初始化
+                // 设置正确的NPC数据
+                SetNPCData(npcComponent, entry.npcData);
             }
             
             // 记录唯一NPC
@@ -120,6 +121,21 @@ namespace NPC.Core
             }
             
             return npc;
+        }
+        
+        /// <summary>
+        /// 设置NPC数据
+        /// </summary>
+        private void SetNPCData(NPCBase npcComponent, NPCData npcData)
+        {
+            if (npcComponent == null || npcData == null)
+            {
+                Debug.LogError("Cannot set NPC data: component or data is null");
+                return;
+            }
+            
+            // 使用公开的SetNPCData方法
+            npcComponent.SetNPCData(npcData);
         }
         
         /// <summary>

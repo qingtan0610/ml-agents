@@ -86,6 +86,46 @@ namespace NPC.Managers
         }
         
         /// <summary>
+        /// 获取强化后的伤害值
+        /// </summary>
+        public float GetUpgradedDamage(WeaponItem weapon)
+        {
+            if (weapon == null) return 0;
+            var data = GetUpgradeData(weapon);
+            return weapon.Damage + data.damageBonus;
+        }
+        
+        /// <summary>
+        /// 获取强化后的攻速
+        /// </summary>
+        public float GetUpgradedAttackSpeed(WeaponItem weapon)
+        {
+            if (weapon == null) return 1f;
+            var data = GetUpgradeData(weapon);
+            return weapon.AttackSpeed + data.attackSpeedBonus;
+        }
+        
+        /// <summary>
+        /// 获取强化后的攻击范围
+        /// </summary>
+        public float GetUpgradedAttackRange(WeaponItem weapon)
+        {
+            if (weapon == null) return 1f;
+            var data = GetUpgradeData(weapon);
+            return weapon.AttackRange + data.rangeBonus;
+        }
+        
+        /// <summary>
+        /// 获取强化后的暴击率
+        /// </summary>
+        public float GetUpgradedCritChance(WeaponItem weapon)
+        {
+            if (weapon == null) return 0.05f;
+            var data = GetUpgradeData(weapon);
+            return weapon.CriticalChance + data.critChanceBonus;
+        }
+        
+        /// <summary>
         /// 获取升级后的武器属性显示文本
         /// </summary>
         public string GetUpgradedStatsText(WeaponItem weapon)

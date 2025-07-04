@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using System.Text;
+using System.Linq;
 using NPC.Core;
 using NPC.Types;
 using NPC.Data;
@@ -34,6 +35,21 @@ namespace PlayerDebug
         [SerializeField] private int testItemIndex = 0; // 测试购买的商品索引
         [SerializeField] private int testServiceIndex = 0; // 测试服务的索引
         [SerializeField] private bool showDetailedInfo = true; // 显示详细信息
+        
+        // 状态机制
+        private enum InteractionMode
+        {
+            None,           // 默认状态
+            MainMenu,       // 主菜单（1对话 2购买 3卖出 4服务）
+            BuyMenu,        // 购买菜单
+            SellMenu,       // 卖出菜单
+            ServiceMenu,    // 服务菜单
+            ServiceSelect   // 具体服务选择
+        }
+        
+        private InteractionMode currentMode = InteractionMode.None;
+        private string currentServiceType = "";
+        private List<string> currentMenuItems = new List<string>(); // 当前菜单项
         
         private bool showDebugPanel = false;
         private Texture2D backgroundTexture;
@@ -174,8 +190,8 @@ namespace PlayerDebug
                 nextUpdateTime = Time.time + updateInterval;
             }
             
-            // 测试快捷键
-            if (showDebugPanel && currentNPC != null)
+            // 测试快捷键（即使面板隐藏也要响应）
+            if (currentNPC != null)
             {
                 HandleTestInputs();
             }
@@ -185,87 +201,47 @@ namespace PlayerDebug
         {
             if (currentNPC == null) return;
             
-            bool isPPressed = Input.GetKey(KeyCode.P);
-            bool isBPressed = Input.GetKey(KeyCode.B);
-            bool isAltPressed = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
             
-            // P+数字键：卖出背包物品 (避免与移动键S冲突)
-            if (isPPressed)
+            // ESC键退出当前菜单
+            if (Input.GetKeyDown(KeyCode.Escape))
             {
-                for (int i = 1; i <= 9; i++)
+                if (currentMode != InteractionMode.None)
                 {
-                    if (Input.GetKeyDown(KeyCode.Alpha0 + i))
-                    {
-                        SellInventoryItem(i - 1);
-                        break;
-                    }
-                }
-                if (Input.GetKeyDown(KeyCode.Alpha0)) // P+0 for slot 10
-                {
-                    SellInventoryItem(9);
-                }
-            }
-            // B+数字键：购买商品
-            else if (isBPressed)
-            {
-                for (int i = 1; i <= 9; i++)
-                {
-                    if (Input.GetKeyDown(KeyCode.Alpha0 + i))
-                    {
-                        BuyShopItem(i - 1);
-                        break;
-                    }
-                }
-                if (Input.GetKeyDown(KeyCode.Alpha0)) // B+0 for item 10
-                {
-                    BuyShopItem(9);
-                }
-            }
-            // Alt+数字键执行功能
-            else if (isAltPressed)
-            {
-                // Alt+1: 对话
-                if (Input.GetKeyDown(KeyCode.Alpha1))
-                {
-                    StartDialogue();
-                }
-                // Alt+2: 专属功能1 (铁匠打造、医生治疗、餐厅用餐、裁缝扩容等)
-                else if (Input.GetKeyDown(KeyCode.Alpha2))
-                {
-                    TestSpecialFunction1();
-                }
-                // Alt+3: 专属功能2 (铁匠强化等)
-                else if (Input.GetKeyDown(KeyCode.Alpha3))
-                {
-                    TestSpecialFunction2();
-                }
-            }
-            // 普通数字键切换项目索引
-            else
-            {
-                for (int i = 1; i <= 9; i++)
-                {
-                    if (Input.GetKeyDown(KeyCode.Alpha0 + i))
-                    {
-                        testItemIndex = i - 1;
-                        UpdateCachedInfo();
-                        Debug.Log($"[NPCDebugger] Selected item index: {testItemIndex}");
-                        break;
-                    }
-                }
-                if (Input.GetKeyDown(KeyCode.Alpha0))
-                {
-                    testItemIndex = 9;
-                    UpdateCachedInfo();
-                    Debug.Log($"[NPCDebugger] Selected item index: {testItemIndex}");
+                    currentMode = InteractionMode.None;
+                    Debug.Log("[NPCDebugger] Exited menu");
+                    return;
                 }
             }
             
-            // L - 切换详细信息显示
+            // 根据当前模式处理输入
+            switch (currentMode)
+            {
+                case InteractionMode.None:
+                    HandleNormalMode();
+                    break;
+                case InteractionMode.MainMenu:
+                    HandleMainMenu();
+                    break;
+                case InteractionMode.BuyMenu:
+                    HandleBuyMenu();
+                    break;
+                case InteractionMode.SellMenu:
+                    HandleSellMenu();
+                    break;
+                case InteractionMode.ServiceMenu:
+                    HandleServiceMenu();
+                    break;
+                case InteractionMode.ServiceSelect:
+                    HandleServiceSelection();
+                    break;
+            }
+            
+            // L键切换详细信息显示
             if (Input.GetKeyDown(KeyCode.L))
             {
                 showDetailedInfo = !showDetailedInfo;
                 UpdateCachedInfo();
+                Debug.Log($"[NPCDebugger] Detailed info: {(showDetailedInfo ? "ON" : "OFF")}");
             }
         }
         
@@ -323,29 +299,53 @@ namespace PlayerDebug
             if (currentNPC == null) return;
             
             var npcData = currentNPC.Data;
-            if (npcData == null) return;
+            if (npcData == null) 
+            {
+                Debug.LogError($"[NPCDebugger] NPC {currentNPC.name} has null data!");
+                cachedNPCInfo = $"ERROR: {currentNPC.name} has no data";
+                cachedShopInfo = "No NPC data available";
+                return;
+            }
+            
+            Debug.Log($"[NPCDebugger] Updating info for {npcData.npcName} ({npcData.npcType}) - Mode: {currentMode}");
             
             // 构建NPC基础信息
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine($"Name: {npcData.npcName}");
+            sb.AppendLine($"=== {npcData.npcName} ===");
             sb.AppendLine($"Type: {npcData.npcType}");
-            sb.AppendLine($"Mood: {npcData.defaultMood}");
-            sb.AppendLine($"Range: {npcData.interactionRange:F1}m");
-            sb.AppendLine($"Interaction Time: {(Time.time - lastInteractionTime):F1}s");
-            sb.AppendLine();
-            sb.AppendLine("=== DIALOGUE ===");
-            sb.AppendLine($"Greeting: \"{npcData.greetingText}\"");
-            sb.AppendLine($"Farewell: \"{npcData.farewellText}\"");
             cachedNPCInfo = sb.ToString();
             
-            // 构建专门信息
-            if (currentNPC is MerchantNPC merchant)
+            // 根据当前模式显示不同内容
+            switch (currentMode)
             {
-                UpdateMerchantInfo(merchant);
-            }
-            else
-            {
-                cachedShopInfo = GetNPCSpecificInfo(currentNPC);
+                case InteractionMode.None:
+                    // 在默认状态下显示NPC的商店和服务信息
+                    cachedShopInfo = GetNPCOverviewInfo();
+                    break;
+                    
+                case InteractionMode.MainMenu:
+                    cachedShopInfo = GetMainMenuDisplay();
+                    break;
+                    
+                case InteractionMode.BuyMenu:
+                    cachedShopInfo = GetBuyMenuDisplay();
+                    break;
+                    
+                case InteractionMode.SellMenu:
+                    cachedShopInfo = GetSellMenuDisplay();
+                    break;
+                    
+                case InteractionMode.ServiceMenu:
+                    cachedShopInfo = GetServiceMenuDisplay();
+                    break;
+                    
+                case InteractionMode.ServiceSelect:
+                    cachedShopInfo = GetServiceSelectDisplay();
+                    break;
+                    
+                default:
+                    cachedShopInfo = "";
+                    break;
             }
         }
         
@@ -416,24 +416,31 @@ namespace PlayerDebug
         
         private string GetNPCSpecificInfo(NPCBase npc)
         {
+            Debug.Log($"[NPCDebugger] GetNPCSpecificInfo called for {npc.GetType().Name}");
+            
             if (npc is RestaurantNPC restaurant)
             {
+                Debug.Log("[NPCDebugger] Detected RestaurantNPC");
                 return GetRestaurantInfo(restaurant);
             }
             else if (npc is DoctorNPC doctor)
             {
+                Debug.Log("[NPCDebugger] Detected DoctorNPC");
                 return GetDoctorInfo(doctor);
             }
             else if (npc is BlacksmithNPC blacksmith)
             {
+                Debug.Log("[NPCDebugger] Detected BlacksmithNPC");
                 return GetBlacksmithInfo(blacksmith);
             }
             else if (npc is TailorNPC tailor)
             {
+                Debug.Log("[NPCDebugger] Detected TailorNPC");
                 return GetTailorInfo(tailor);
             }
             
-            return "未知NPC类型";
+            Debug.LogWarning($"[NPCDebugger] Unknown NPC type: {npc.GetType().Name}");
+            return $"Unknown NPC type: {npc.GetType().Name}";
         }
         
         private string GetRestaurantInfo(RestaurantNPC restaurant)
@@ -442,41 +449,37 @@ namespace PlayerDebug
             if (restaurantData == null) return "";
             
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("=== 餐厅菜单 ===");
+            sb.AppendLine("=== RESTAURANT MENU ===");
             
             // 免费水
             if (restaurantData.provideFreeWater)
             {
-                string currentText = (testServiceIndex == 0) ? " ←" : "";
-                sb.AppendLine($"[免费] 清水{currentText}");
-                sb.AppendLine($"  恢复口渴: {restaurantData.waterRestoreAmount}");
-                sb.AppendLine();
+                sb.AppendLine($"[0] Free Water");
+                sb.AppendLine($"  Thirst+{restaurantData.waterRestoreAmount}");
             }
             
             // 菜单项目
-            for (int i = 0; i < restaurantData.menu.Count; i++)
+            for (int i = 0; i < restaurantData.menu.Count && i < 9; i++)
             {
                 var item = restaurantData.menu[i];
-                string special = item.isSpecialDish ? " [特色]" : "";
-                string currentText = (i == testItemIndex && testServiceIndex == 1) ? " ←" : "";
+                string special = item.isSpecialDish ? " [SPECIAL]" : "";
                 
-                sb.AppendLine($"[{i}] {item.itemName}{special}{currentText}");
-                sb.AppendLine($"  价格: {item.price}金币");
+                sb.AppendLine($"[{i + 1}] {item.itemName}{special}");
+                sb.AppendLine($"  ${item.price}");
                 
                 if (showDetailedInfo)
                 {
                     List<string> effects = new List<string>();
-                    if (item.hungerRestore > 0) effects.Add($"饥饿+{item.hungerRestore}");
-                    if (item.thirstRestore > 0) effects.Add($"口渴+{item.thirstRestore}");
-                    if (item.healthRestore > 0) effects.Add($"生命+{item.healthRestore}");
-                    if (item.staminaRestore > 0) effects.Add($"体力+{item.staminaRestore}");
+                    if (item.hungerRestore > 0) effects.Add($"H+{item.hungerRestore}");
+                    if (item.thirstRestore > 0) effects.Add($"T+{item.thirstRestore}");
+                    if (item.healthRestore > 0) effects.Add($"HP+{item.healthRestore}");
+                    if (item.staminaRestore > 0) effects.Add($"SP+{item.staminaRestore}");
                     if (item.hasBuffEffect && item.buffData != null)
-                        effects.Add($"{item.buffData.buffName}({item.buffData.duration}秒)");
+                        effects.Add($"{item.buffData.buffName}({item.buffData.duration}s)");
                     
                     if (effects.Count > 0)
-                        sb.AppendLine($"  效果: {string.Join(", ", effects)}");
+                        sb.AppendLine($"  {string.Join(" ", effects)}");
                 }
-                sb.AppendLine();
             }
             
             return sb.ToString();
@@ -488,48 +491,44 @@ namespace PlayerDebug
             if (doctorData == null) return "";
             
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("=== 医疗服务 ===");
+            sb.AppendLine("=== MEDICAL SERVICES ===");
             
             // 显示治疗服务
-            for (int i = 0; i < doctorData.services.Count; i++)
+            for (int i = 0; i < doctorData.services.Count && i < 9; i++)
             {
                 var service = doctorData.services[i];
                 int cost = doctor.GetServiceCost(service.serviceName);
                 bool canAfford = doctor.CanProvideService(gameObject, service.serviceName);
-                string status = canAfford ? "" : " [不可用]";
-                string currentText = (i == testServiceIndex) ? " ←" : "";
+                string status = canAfford ? "" : " [NO GOLD]";
                 
-                sb.AppendLine($"[{i}] {service.serviceName}{currentText}");
-                sb.AppendLine($"  费用: {cost}金币{status}");
+                sb.AppendLine($"[{i + 1}] {service.serviceName}");
+                sb.AppendLine($"  ${cost}{status}");
                 
                 if (showDetailedInfo)
                 {
-                    sb.AppendLine($"  {service.description}");
                     if (service.fullHeal) 
-                        sb.AppendLine("  完全治疗");
+                        sb.AppendLine("  Full heal");
                     else if (service.healthRestore > 0) 
-                        sb.AppendLine($"  恢复生命: {service.healthRestore}");
+                        sb.AppendLine($"  HP+{service.healthRestore}");
                     if (service.providesImmunity)
-                        sb.AppendLine($"  免疫: {service.immunityType} ({service.immunityDuration}秒)");
+                        sb.AppendLine($"  Immune:{service.immunityType}({service.immunityDuration}s)");
                 }
-                sb.AppendLine();
             }
             
             // 显示药品商店
             if (doctorData.medicineShop != null && doctorData.medicineShop.items.Count > 0)
             {
-                sb.AppendLine("=== 药品商店 ===");
-                sb.AppendLine("(按P键后输入'shop'访问)");
-                if (showDetailedInfo)
+                sb.AppendLine();
+                sb.AppendLine("=== MEDICINE SHOP (B+Num) ===");
+                int idx = 0;
+                foreach (var item in doctorData.medicineShop.items)
                 {
-                    foreach (var item in doctorData.medicineShop.items)
-                    {
-                        if (item.item == null) continue;
-                        float price = item.priceOverride > 0 ? item.priceOverride : item.item.BuyPrice;
-                        price *= doctorData.medicinePriceMultiplier;
-                        string stock = item.stock == -1 ? "∞" : item.stock.ToString();
-                        sb.AppendLine($"• {item.item.ItemName} - {price:F0}金币 (库存:{stock})");
-                    }
+                    if (item.item == null || idx >= 10) continue;
+                    float price = item.priceOverride > 0 ? item.priceOverride : item.item.BuyPrice;
+                    price *= doctorData.medicinePriceMultiplier;
+                    string stock = item.stock == -1 ? "inf" : item.stock.ToString();
+                    sb.AppendLine($"[B+{(idx+1)%10}]{item.item.ItemName} ${price:F0} x{stock}");
+                    idx++;
                 }
             }
             
@@ -543,61 +542,57 @@ namespace PlayerDebug
             
             StringBuilder sb = new StringBuilder();
             
-            if (testServiceIndex == 0)
+            // 显示打造配方
+            sb.AppendLine("=== WEAPON CRAFTING ===");
+            for (int i = 0; i < blacksmithData.recipes.Count && i < 9; i++)
             {
-                // 显示打造配方
-                sb.AppendLine("=== 武器打造 ===");
-                for (int i = 0; i < blacksmithData.recipes.Count; i++)
+                var recipe = blacksmithData.recipes[i];
+                bool canCraft = blacksmith.CanCraft(gameObject, recipe.recipeName);
+                string status = canCraft ? "" : " [NEED MATERIALS]";
+                
+                sb.AppendLine($"[{i + 1}] {recipe.recipeName}");
+                sb.AppendLine($"  ${recipe.craftingFee}{status}");
+                
+                if (showDetailedInfo)
                 {
-                    var recipe = blacksmithData.recipes[i];
-                    bool canCraft = blacksmith.CanCraft(gameObject, recipe.recipeName);
-                    string status = canCraft ? "" : " [材料不足]";
-                    string currentText = (i == testItemIndex) ? " ←" : "";
-                    
-                    sb.AppendLine($"[{i}] {recipe.recipeName}{currentText}");
-                    sb.AppendLine($"  费用: {recipe.craftingFee}金币{status}");
-                    
-                    if (showDetailedInfo)
+                    foreach (var mat in recipe.requiredMaterials)
                     {
-                        sb.AppendLine($"  {recipe.description}");
-                        sb.AppendLine("  材料:");
-                        foreach (var mat in recipe.requiredMaterials)
-                        {
-                            int has = playerInventory?.GetItemCount(mat.material) ?? 0;
-                            string hasText = has >= mat.amount ? "✓" : "✗";
-                            sb.AppendLine($"    {hasText} {mat.material.ItemName} x{mat.amount} (有:{has})");
-                        }
+                        int has = playerInventory?.GetItemCount(mat.material) ?? 0;
+                        string hasText = has >= mat.amount ? "✓" : "✗";
+                        sb.AppendLine($"  {hasText} {mat.material.ItemName} x{mat.amount} (has:{has})");
                     }
-                    sb.AppendLine();
+                }
+            }
+            
+            // 显示强化服务
+            sb.AppendLine();
+            sb.AppendLine("=== WEAPON UPGRADE ===");
+            sb.AppendLine("Press Alt+3 to upgrade equipped weapon");
+            sb.AppendLine($"Max level: +{blacksmithData.maxUpgradeLevel}");
+            
+            var weapon = GetFirstWeaponInInventory();
+            if (weapon != null)
+            {
+                var upgradeManager = NPC.Managers.WeaponUpgradeManager.Instance;
+                int currentLevel = upgradeManager.GetWeaponUpgradeLevel(weapon);
+                sb.AppendLine($"Weapon: {weapon.ItemName} +{currentLevel}");
+                
+                // 显示当前等级的强化选项
+                var upgrade = blacksmithData.upgradeOptions.Find(u => currentLevel >= u.minUpgradeLevel && currentLevel <= u.maxUpgradeLevel);
+                if (upgrade != null && currentLevel < blacksmithData.maxUpgradeLevel)
+                {
+                    sb.AppendLine($"Next: +{currentLevel + 1}");
+                    sb.AppendLine($"Success: {upgrade.baseSuccessRate * 100:F0}%");
+                    sb.AppendLine($"Cost: ${upgrade.baseUpgradeFee}");
+                }
+                else if (currentLevel >= blacksmithData.maxUpgradeLevel)
+                {
+                    sb.AppendLine("MAX LEVEL REACHED!");
                 }
             }
             else
             {
-                // 显示强化服务
-                sb.AppendLine("=== 武器强化 ===");
-                sb.AppendLine($"最高强化等级: +{blacksmithData.maxUpgradeLevel}");
-                
-                var weapon = GetFirstWeaponInInventory();
-                if (weapon != null)
-                {
-                    sb.AppendLine($"\\n选中武器: {weapon.ItemName}");
-                    // 这里可以显示更多武器信息
-                }
-                else
-                {
-                    sb.AppendLine("\\n背包中没有武器");
-                }
-                
-                if (showDetailedInfo && blacksmithData.upgradeOptions.Count > 0)
-                {
-                    sb.AppendLine("\\n强化选项:");
-                    foreach (var upgrade in blacksmithData.upgradeOptions)
-                    {
-                        sb.AppendLine($"• 等级 {upgrade.minUpgradeLevel}-{upgrade.maxUpgradeLevel}");
-                        sb.AppendLine($"  成功率: {upgrade.baseSuccessRate * 100:F0}%");
-                        sb.AppendLine($"  伤害提升: {upgrade.damageIncrease * 100:F0}%");
-                    }
-                }
+                sb.AppendLine("No weapon in bag");
             }
             
             return sb.ToString();
@@ -609,11 +604,12 @@ namespace PlayerDebug
             if (tailorData == null) return "";
             
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine("=== 裁缝服务 ===");
+            sb.AppendLine("=== TAILOR SERVICE (Alt+2) ===");
             
             // 获取当前背包容量
             int currentSlots = playerInventory != null ? playerInventory.GetMaxSlots() : 10;
-            sb.AppendLine($"当前背包容量: {currentSlots}格\\n");
+            sb.AppendLine($"Current bag: {currentSlots} slots");
+            sb.AppendLine();
             
             // 显示可用升级
             bool hasAvailableUpgrade = false;
@@ -625,37 +621,37 @@ namespace PlayerDebug
                     hasAvailableUpgrade = true;
                     int cost = (int)(upgrade.upgradeFee * tailorData.upgradePriceMultiplier);
                     bool canAfford = tailor.CanProvideService(gameObject, upgrade.upgradeName);
-                    string status = canAfford ? "" : " [材料/金币不足]";
-                    string currentText = (i == testItemIndex) ? " ←" : "";
-                    
-                    sb.AppendLine($"[{i}] {upgrade.upgradeName}{currentText}");
-                    sb.AppendLine($"  升级到: {upgrade.maxSlots}格 (+{upgrade.slotsToAdd})");
-                    sb.AppendLine($"  费用: {cost}金币{status}");
+                    string status = canAfford ? "" : " [X]";
+                    sb.AppendLine($"[Alt+2,{i}] {upgrade.upgradeName}");
+                    sb.AppendLine($"  Upgrade to: {upgrade.maxSlots} (+{upgrade.slotsToAdd})");
+                    sb.AppendLine($"  Cost: ${cost}{status}");
                     
                     if (showDetailedInfo && upgrade.requiredMaterials.Count > 0)
                     {
-                        sb.AppendLine("  材料:");
+                        sb.AppendLine("  Materials:");
                         foreach (var mat in upgrade.requiredMaterials)
                         {
                             int has = playerInventory?.GetItemCount(mat.material) ?? 0;
-                            string hasText = has >= mat.amount ? "✓" : "✗";
-                            sb.AppendLine($"    {hasText} {mat.material.ItemName} x{mat.amount} (有:{has})");
+                            string hasText = has >= mat.amount ? "+" : "-";
+                            sb.AppendLine($"    {hasText}{mat.material.ItemName}x{mat.amount}(has:{has})");
                         }
                     }
-                    sb.AppendLine();
                 }
             }
             
             if (!hasAvailableUpgrade)
             {
-                sb.AppendLine("[已达到最大容量或没有可用升级]");
+                sb.AppendLine("[Max capacity reached]");
             }
             
             // 其他服务
             if (tailorData.canDyeClothes)
-                sb.AppendLine("\\n• 染色服务 (暂未开放)");
+            {
+                sb.AppendLine();
+                sb.AppendLine("* Dyeing (Coming soon)");
+            }
             if (tailorData.canRepairArmor)
-                sb.AppendLine("• 护甲修理 (暂未开放)");
+                sb.AppendLine("* Repair (Coming soon)");
             
             return sb.ToString();
         }
@@ -796,7 +792,433 @@ namespace PlayerDebug
             }
         }
         
-        // 新的功能方法
+        // 新的菜单处理方法
+        private void HandleNormalMode()
+        {
+            // 按Space或Enter进入主菜单
+            if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return))
+            {
+                currentMode = InteractionMode.MainMenu;
+            }
+        }
+        
+        private void HandleMainMenu()
+        {
+            if (Input.GetKeyDown(KeyCode.Alpha1))
+            {
+                // 对话
+                StartDialogue();
+                currentMode = InteractionMode.None;
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha2))
+            {
+                // 购买
+                if (CanBuy())
+                {
+                    currentMode = InteractionMode.BuyMenu;
+                    }
+                else
+                {
+                    Debug.Log("[NPCDebugger] This NPC doesn't sell items");
+                }
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha3))
+            {
+                // 卖出
+                currentMode = InteractionMode.SellMenu;
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha4))
+            {
+                // 服务
+                if (HasServices())
+                {
+                    currentMode = InteractionMode.ServiceMenu;
+                    }
+                else
+                {
+                    Debug.Log("[NPCDebugger] This NPC doesn't provide services");
+                }
+            }
+            else if (Input.GetKeyDown(KeyCode.Alpha0))
+            {
+                // 退出
+                currentMode = InteractionMode.None;
+                Debug.Log("[NPCDebugger] Exited interaction menu");
+            }
+        }
+        
+        private void HandleBuyMenu()
+        {
+            // 数字键购买物品
+            for (int i = 1; i <= 9; i++)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha0 + i))
+                {
+                    BuyShopItem(i - 1);
+                    break;
+                }
+            }
+            if (Input.GetKeyDown(KeyCode.Alpha0))
+            {
+                // 0键返回主菜单
+                currentMode = InteractionMode.MainMenu;
+            }
+        }
+        
+        private void HandleSellMenu()
+        {
+            // 数字键卖出物品
+            for (int i = 1; i <= 9; i++)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha0 + i))
+                {
+                    SellInventoryItem(i - 1);
+                    break;
+                }
+            }
+            if (Input.GetKeyDown(KeyCode.Alpha0))
+            {
+                // 0键返回主菜单
+                currentMode = InteractionMode.MainMenu;
+            }
+        }
+        
+        private void HandleServiceMenu()
+        {
+            // 根据NPC类型显示不同的服务
+            if (currentNPC is RestaurantNPC)
+            {
+                currentMode = InteractionMode.ServiceSelect;
+                currentServiceType = "restaurant";
+            }
+            else if (currentNPC is DoctorNPC)
+            {
+                currentMode = InteractionMode.ServiceSelect;
+                currentServiceType = "doctor";
+            }
+            else if (currentNPC is BlacksmithNPC)
+            {
+                // 铁匠有两种服务
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                {
+                    currentMode = InteractionMode.ServiceSelect;
+                    currentServiceType = "blacksmith_craft";
+                }
+                else if (Input.GetKeyDown(KeyCode.Alpha2))
+                {
+                    // 直接强化
+                    TestBlacksmithUpgrade(currentNPC as BlacksmithNPC);
+                    currentMode = InteractionMode.MainMenu;
+                    }
+                else if (Input.GetKeyDown(KeyCode.Alpha0))
+                {
+                    currentMode = InteractionMode.MainMenu;
+                    }
+            }
+            else if (currentNPC is TailorNPC)
+            {
+                // 直接执行扩容
+                TestTailorService(currentNPC as TailorNPC);
+                currentMode = InteractionMode.MainMenu;
+            }
+        }
+        
+        // 服务选择处理
+        private void HandleServiceSelection()
+        {
+            // 在服务选择模式下，直接使用数字键
+            for (int i = 0; i <= 9; i++)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha0 + i))
+                {
+                    bool handled = false;
+                    
+                    switch (currentServiceType)
+                    {
+                        case "restaurant":
+                            HandleRestaurantSelection(i);
+                            handled = true;
+                            break;
+                        case "doctor":
+                            HandleDoctorSelection(i);
+                            handled = true;
+                            break;
+                        case "blacksmith_craft":
+                            HandleBlacksmithCraftSelection(i);
+                            handled = true;
+                            break;
+                    }
+                    
+                    if (handled)
+                    {
+                        // 执行后返回主菜单
+                        currentMode = InteractionMode.MainMenu;
+                                }
+                    break;
+                }
+            }
+        }
+        
+        private void HandleRestaurantSelection(int index)
+        {
+            var restaurant = currentNPC as RestaurantNPC;
+            var restaurantData = restaurant?.Data as RestaurantData;
+            if (restaurant == null || restaurantData == null) return;
+            
+            if (index == 0 && restaurantData.provideFreeWater)
+            {
+                restaurant.ProvideService(gameObject, "free_water");
+                Debug.Log("[NPCDebugger] 获得免费水");
+            }
+            else if (index > 0 && index <= restaurantData.menu.Count)
+            {
+                var menuItem = restaurantData.menu[index - 1];
+                if (restaurant.CanProvideService(gameObject, menuItem.itemName))
+                {
+                    restaurant.ProvideService(gameObject, menuItem.itemName);
+                    Debug.Log($"[NPCDebugger] 点餐: {menuItem.itemName} - 花费 {menuItem.price} 金币");
+                }
+                else
+                {
+                    Debug.Log($"[NPCDebugger] 无法购买: {menuItem.itemName} (金币不足)");
+                }
+            }
+        }
+        
+        private void HandleDoctorSelection(int index)
+        {
+            var doctor = currentNPC as DoctorNPC;
+            var doctorData = doctor?.Data as DoctorData;
+            if (doctor == null || doctorData == null) return;
+            
+            if (index > 0 && index <= doctorData.services.Count)
+            {
+                var service = doctorData.services[index - 1];
+                if (doctor.CanProvideService(gameObject, service.serviceName))
+                {
+                    doctor.ProvideService(gameObject, service.serviceName);
+                    int cost = doctor.GetServiceCost(service.serviceName);
+                    Debug.Log($"[NPCDebugger] 使用医疗服务: {service.serviceName} - 花费 {cost} 金币");
+                }
+                else
+                {
+                    Debug.Log($"[NPCDebugger] 无法使用服务: {service.serviceName} (金币不足或条件不满足)");
+                }
+            }
+        }
+        
+        private void HandleBlacksmithCraftSelection(int index)
+        {
+            var blacksmith = currentNPC as BlacksmithNPC;
+            var blacksmithData = blacksmith?.Data as BlacksmithData;
+            if (blacksmith == null || blacksmithData == null) return;
+            
+            if (index > 0 && index <= blacksmithData.recipes.Count)
+            {
+                var recipe = blacksmithData.recipes[index - 1];
+                if (blacksmith.CanCraft(gameObject, recipe.recipeName))
+                {
+                    blacksmith.CraftItem(gameObject, recipe.recipeName);
+                    Debug.Log($"[NPCDebugger] 开始打造: {recipe.recipeName} - 花费 {recipe.craftingFee} 金币");
+                }
+                else
+                {
+                    Debug.Log($"[NPCDebugger] 无法打造: {recipe.recipeName} (材料不足)");
+                    foreach (var mat in recipe.requiredMaterials)
+                    {
+                        int has = playerInventory?.GetItemCount(mat.material) ?? 0;
+                        if (has < mat.amount)
+                        {
+                            Debug.Log($"  缺少: {mat.material.ItemName} ({has}/{mat.amount})");
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 菜单显示方法
+        private void ShowMainMenu()
+        {
+            if (currentNPC?.Data == null) return;
+            
+            Debug.Log($"\n=== {currentNPC.Data.npcName} ===");
+            Debug.Log("[1] Talk");
+            
+            if (CanBuy())
+                Debug.Log("[2] Buy");
+                
+            Debug.Log("[3] Sell");
+            
+            if (HasServices())
+                Debug.Log("[4] Services");
+                
+            Debug.Log("[0] Exit");
+            Debug.Log("Press number to select:");
+        }
+        
+        private void ShowBuyMenu()
+        {
+            Debug.Log("\n=== BUY MENU ===");
+            
+            if (currentNPC is MerchantNPC merchant)
+            {
+                var merchantData = merchant.Data as MerchantData;
+                if (merchantData?.shopInventory != null)
+                {
+                    for (int i = 0; i < merchantData.shopInventory.items.Count && i < 9; i++)
+                    {
+                        var item = merchantData.shopInventory.items[i];
+                        if (item.item != null)
+                        {
+                            float price = item.priceOverride > 0 ? item.priceOverride : item.item.BuyPrice;
+                            price *= merchant.GetPriceMultiplier();
+                            Debug.Log($"[{i+1}] {item.item.ItemName} - ${price:F0}");
+                        }
+                    }
+                }
+            }
+            else if (currentNPC is DoctorNPC doctor)
+            {
+                var doctorData = doctor.Data as DoctorData;
+                if (doctorData?.medicineShop != null)
+                {
+                    int idx = 0;
+                    foreach (var item in doctorData.medicineShop.items)
+                    {
+                        if (item.item != null && idx < 9)
+                        {
+                            float price = item.priceOverride > 0 ? item.priceOverride : item.item.BuyPrice;
+                            price *= doctorData.medicinePriceMultiplier;
+                            Debug.Log($"[{idx+1}] {item.item.ItemName} - ${price:F0}");
+                            idx++;
+                        }
+                    }
+                }
+            }
+            
+            Debug.Log("[0] Back");
+        }
+        
+        private void ShowSellMenu()
+        {
+            Debug.Log("\n=== SELL MENU ===");
+            
+            if (playerInventory != null)
+            {
+                for (int i = 0; i < playerInventory.Size && i < 9; i++)
+                {
+                    var slot = playerInventory.GetSlot(i);
+                    if (!slot.IsEmpty)
+                    {
+                        var sellPrice = slot.Item.SellPrice * slot.Quantity;
+                        Debug.Log($"[{i+1}] {slot.Item.ItemName} x{slot.Quantity} - ${sellPrice}");
+                    }
+                    else
+                    {
+                        Debug.Log($"[{i+1}] Empty");
+                    }
+                }
+            }
+            
+            Debug.Log("[0] Back");
+        }
+        
+        private void ShowServiceMenu()
+        {
+            Debug.Log("\n=== SERVICES ===");
+            
+            if (currentNPC is BlacksmithNPC)
+            {
+                Debug.Log("[1] Weapon Crafting");
+                Debug.Log("[2] Weapon Upgrade");
+            }
+            else if (currentNPC is TailorNPC)
+            {
+                Debug.Log("[1] Bag Expansion");
+            }
+            
+            Debug.Log("[0] Back");
+        }
+        
+        private void ShowRestaurantServices()
+        {
+            var restaurant = currentNPC as RestaurantNPC;
+            var restaurantData = restaurant?.Data as RestaurantData;
+            if (restaurantData == null) return;
+            
+            Debug.Log("\n=== RESTAURANT MENU ===");
+            
+            if (restaurantData.provideFreeWater)
+            {
+                Debug.Log("[0] Free Water");
+            }
+            
+            for (int i = 0; i < restaurantData.menu.Count && i < 9; i++)
+            {
+                var item = restaurantData.menu[i];
+                Debug.Log($"[{i + 1}] {item.itemName} - ${item.price}");
+            }
+            
+            Debug.Log("Press number to order:");
+        }
+        
+        private void ShowDoctorServices()
+        {
+            var doctor = currentNPC as DoctorNPC;
+            var doctorData = doctor?.Data as DoctorData;
+            if (doctorData == null) return;
+            
+            Debug.Log("\n=== MEDICAL SERVICES ===");
+            
+            for (int i = 0; i < doctorData.services.Count && i < 9; i++)
+            {
+                var service = doctorData.services[i];
+                int cost = doctor.GetServiceCost(service.serviceName);
+                Debug.Log($"[{i + 1}] {service.serviceName} - ${cost}");
+            }
+            
+            Debug.Log("Press number to select:");
+        }
+        
+        private void ShowBlacksmithCrafting()
+        {
+            var blacksmith = currentNPC as BlacksmithNPC;
+            var blacksmithData = blacksmith?.Data as BlacksmithData;
+            if (blacksmithData == null) return;
+            
+            Debug.Log("\n=== WEAPON CRAFTING ===");
+            
+            for (int i = 0; i < blacksmithData.recipes.Count && i < 9; i++)
+            {
+                var recipe = blacksmithData.recipes[i];
+                Debug.Log($"[{i + 1}] {recipe.recipeName} - ${recipe.craftingFee}");
+            }
+            
+            Debug.Log("Press number to craft:");
+        }
+        
+        // 辅助方法
+        private bool CanBuy()
+        {
+            if (currentNPC is MerchantNPC merchant)
+            {
+                var merchantData = merchant.Data as MerchantData;
+                return merchantData?.shopInventory?.items?.Count > 0;
+            }
+            else if (currentNPC is DoctorNPC doctor)
+            {
+                var doctorData = doctor.Data as DoctorData;
+                return doctorData?.medicineShop?.items?.Count > 0;
+            }
+            return false;
+        }
+        
+        private bool HasServices()
+        {
+            return currentNPC is RestaurantNPC || currentNPC is DoctorNPC || 
+                   currentNPC is BlacksmithNPC || currentNPC is TailorNPC;
+        }
+        
         private void StartDialogue()
         {
             if (currentNPC?.Data == null) return;
@@ -806,6 +1228,148 @@ namespace PlayerDebug
             
             // 模拟开始对话
             currentNPC.StartInteraction(gameObject);
+        }
+        
+        // 显示内容获取方法
+        private string GetMainMenuDisplay()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("=== MAIN MENU ===");
+            sb.AppendLine("[1] Talk");
+            
+            if (CanBuy())
+                sb.AppendLine("[2] Buy");
+                
+            sb.AppendLine("[3] Sell");
+            
+            if (HasServices())
+                sb.AppendLine("[4] Services");
+                
+            sb.AppendLine("[0] Exit");
+            return sb.ToString();
+        }
+        
+        private string GetBuyMenuDisplay()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("=== BUY MENU ===");
+            
+            if (currentNPC is MerchantNPC merchant)
+            {
+                var merchantData = merchant.Data as MerchantData;
+                if (merchantData?.shopInventory != null)
+                {
+                    for (int i = 0; i < merchantData.shopInventory.items.Count && i < 9; i++)
+                    {
+                        var item = merchantData.shopInventory.items[i];
+                        if (item.item != null)
+                        {
+                            float price = item.priceOverride > 0 ? item.priceOverride : item.item.BuyPrice;
+                            price *= merchant.GetPriceMultiplier();
+                            sb.AppendLine($"[{i+1}] {item.item.ItemName}");
+                            sb.AppendLine($"  ${price:F0}");
+                        }
+                    }
+                }
+            }
+            else if (currentNPC is DoctorNPC doctor)
+            {
+                var doctorData = doctor.Data as DoctorData;
+                if (doctorData?.medicineShop != null)
+                {
+                    int idx = 0;
+                    foreach (var item in doctorData.medicineShop.items)
+                    {
+                        if (item.item != null && idx < 9)
+                        {
+                            float price = item.priceOverride > 0 ? item.priceOverride : item.item.BuyPrice;
+                            price *= doctorData.medicinePriceMultiplier;
+                            sb.AppendLine($"[{idx+1}] {item.item.ItemName}");
+                            sb.AppendLine($"  ${price:F0}");
+                            idx++;
+                        }
+                    }
+                }
+            }
+            
+            sb.AppendLine("[0] Back");
+            return sb.ToString();
+        }
+        
+        private string GetSellMenuDisplay()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("=== SELL MENU ===");
+            
+            if (playerInventory != null)
+            {
+                for (int i = 0; i < playerInventory.Size && i < 9; i++)
+                {
+                    var slot = playerInventory.GetSlot(i);
+                    if (!slot.IsEmpty)
+                    {
+                        var sellPrice = slot.Item.SellPrice * slot.Quantity;
+                        sb.AppendLine($"[{i+1}] {slot.Item.ItemName} x{slot.Quantity}");
+                        sb.AppendLine($"  Sell for ${sellPrice}");
+                    }
+                }
+            }
+            
+            sb.AppendLine("[0] Back");
+            return sb.ToString();
+        }
+        
+        private string GetServiceMenuDisplay()
+        {
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("=== SERVICES ===");
+            
+            if (currentNPC is BlacksmithNPC)
+            {
+                sb.AppendLine("[1] Weapon Crafting");
+                sb.AppendLine("[2] Weapon Upgrade");
+            }
+            else if (currentNPC is TailorNPC)
+            {
+                sb.AppendLine("[1] Bag Expansion");
+            }
+            else if (currentNPC is RestaurantNPC || currentNPC is DoctorNPC)
+            {
+                sb.AppendLine("Service details will show next");
+            }
+            
+            sb.AppendLine("[0] Back");
+            return sb.ToString();
+        }
+        
+        private string GetServiceSelectDisplay()
+        {
+            StringBuilder sb = new StringBuilder();
+            
+            if (currentServiceType == "restaurant")
+            {
+                return GetRestaurantInfo(currentNPC as RestaurantNPC);
+            }
+            else if (currentServiceType == "doctor")
+            {
+                return GetDoctorInfo(currentNPC as DoctorNPC);
+            }
+            else if (currentServiceType == "blacksmith_craft")
+            {
+                var blacksmithData = (currentNPC as BlacksmithNPC)?.Data as BlacksmithData;
+                if (blacksmithData != null)
+                {
+                    sb.AppendLine("=== WEAPON CRAFTING ===");
+                    for (int i = 0; i < blacksmithData.recipes.Count && i < 9; i++)
+                    {
+                        var recipe = blacksmithData.recipes[i];
+                        sb.AppendLine($"[{i + 1}] {recipe.recipeName}");
+                        sb.AppendLine($"  ${recipe.craftingFee}");
+                    }
+                }
+            }
+            
+            return sb.ToString();
         }
         
         private void TestBuyFunction()
@@ -845,45 +1409,6 @@ namespace PlayerDebug
             }
         }
         
-        private void TestSpecialFunction1()
-        {
-            if (currentNPC == null) return;
-            
-            if (currentNPC is BlacksmithNPC blacksmith)
-            {
-                TestBlacksmithCrafting(blacksmith);
-            }
-            else if (currentNPC is DoctorNPC doctor)
-            {
-                TestDoctorService(doctor);
-            }
-            else if (currentNPC is RestaurantNPC restaurant)
-            {
-                TestRestaurantService(restaurant);
-            }
-            else if (currentNPC is TailorNPC tailor)
-            {
-                TestTailorService(tailor);
-            }
-            else
-            {
-                Debug.Log("[NPCDebugger] This NPC doesn't have special function 1");
-            }
-        }
-        
-        private void TestSpecialFunction2()
-        {
-            if (currentNPC == null) return;
-            
-            if (currentNPC is BlacksmithNPC blacksmith)
-            {
-                TestBlacksmithUpgrade(blacksmith);
-            }
-            else
-            {
-                Debug.Log("[NPCDebugger] This NPC doesn't have special function 2");
-            }
-        }
         
         private void TestMerchantPurchase(MerchantNPC merchant)
         {
@@ -917,18 +1442,37 @@ namespace PlayerDebug
             var doctorData = doctor.Data as DoctorData;
             if (doctorData == null || doctorData.services.Count == 0) return;
             
-            int index = Mathf.Clamp(testServiceIndex, 0, doctorData.services.Count - 1);
-            var service = doctorData.services[index];
-            
-            if (doctor.CanProvideService(gameObject, service.serviceName))
+            // Alt+2后，使用数字键选择具体服务
+            for (int i = 1; i <= 9; i++)
             {
-                doctor.ProvideService(gameObject, service.serviceName);
-                int cost = doctor.GetServiceCost(service.serviceName);
-                Debug.Log($"[NPCDebugger] 使用医疗服务: {service.serviceName}");
+                if (Input.GetKeyDown(KeyCode.Alpha0 + i))
+                {
+                    int serviceIndex = i - 1;
+                    if (serviceIndex < doctorData.services.Count)
+                    {
+                        var service = doctorData.services[serviceIndex];
+                        if (doctor.CanProvideService(gameObject, service.serviceName))
+                        {
+                            doctor.ProvideService(gameObject, service.serviceName);
+                            int cost = doctor.GetServiceCost(service.serviceName);
+                            Debug.Log($"[NPCDebugger] 使用医疗服务: {service.serviceName} - 花费 {cost} 金币");
+                        }
+                        else
+                        {
+                            Debug.Log($"[NPCDebugger] 无法使用服务: {service.serviceName} (金币不足或条件不满足)");
+                        }
+                        return;
+                    }
+                }
             }
-            else
+            
+            // 如果没有按数字键，显示提示
+            Debug.Log("[NPCDebugger] 医疗服务 - 按数字键选择:");
+            for (int i = 0; i < doctorData.services.Count && i < 9; i++)
             {
-                Debug.Log($"[NPCDebugger] 无法使用服务: {service.serviceName}");
+                var service = doctorData.services[i];
+                int cost = doctor.GetServiceCost(service.serviceName);
+                Debug.Log($"  [{i + 1}] {service.serviceName} - {cost}金币");
             }
         }
         
@@ -937,18 +1481,44 @@ namespace PlayerDebug
             var blacksmithData = blacksmith.Data as BlacksmithData;
             if (blacksmithData == null || blacksmithData.recipes.Count == 0) return;
             
-            int index = Mathf.Clamp(testItemIndex, 0, blacksmithData.recipes.Count - 1);
-            var recipe = blacksmithData.recipes[index];
-            
-            if (blacksmith.CanCraft(gameObject, recipe.recipeName))
+            // Alt+2后，使用数字键选择具体配方
+            for (int i = 1; i <= 9; i++)
             {
-                blacksmith.CraftItem(gameObject, recipe.recipeName);
-                Debug.Log($"[NPCDebugger] Started crafting: {recipe.recipeName}");
-                Debug.Log($"Cost: {recipe.craftingFee} gold");
+                if (Input.GetKeyDown(KeyCode.Alpha0 + i))
+                {
+                    int recipeIndex = i - 1;
+                    if (recipeIndex < blacksmithData.recipes.Count)
+                    {
+                        var recipe = blacksmithData.recipes[recipeIndex];
+                        if (blacksmith.CanCraft(gameObject, recipe.recipeName))
+                        {
+                            blacksmith.CraftItem(gameObject, recipe.recipeName);
+                            Debug.Log($"[NPCDebugger] 开始打造: {recipe.recipeName} - 花费 {recipe.craftingFee} 金币");
+                        }
+                        else
+                        {
+                            Debug.Log($"[NPCDebugger] 无法打造: {recipe.recipeName} (材料不足)");
+                            // 显示缺少的材料
+                            foreach (var mat in recipe.requiredMaterials)
+                            {
+                                int has = playerInventory?.GetItemCount(mat.material) ?? 0;
+                                if (has < mat.amount)
+                                {
+                                    Debug.Log($"  缺少: {mat.material.ItemName} ({has}/{mat.amount})");
+                                }
+                            }
+                        }
+                        return;
+                    }
+                }
             }
-            else
+            
+            // 如果没有按数字键，显示提示
+            Debug.Log("[NPCDebugger] 铁匠打造 - 按数字键选择配方:");
+            for (int i = 0; i < blacksmithData.recipes.Count && i < 9; i++)
             {
-                Debug.Log($"[NPCDebugger] Cannot craft: {recipe.recipeName} (insufficient materials)");
+                var recipe = blacksmithData.recipes[i];
+                Debug.Log($"  [{i + 1}] {recipe.recipeName} - {recipe.craftingFee}金币");
             }
         }
         
@@ -1015,27 +1585,50 @@ namespace PlayerDebug
             var restaurantData = restaurant.Data as RestaurantData;
             if (restaurantData == null) return;
             
-            // 测试免费水
-            if (testServiceIndex == 0 && restaurantData.provideFreeWater)
+            // Alt+2后，使用数字键选择具体服务
+            // 0 = 免费水（如果有）
+            // 1-9 = 菜单项
+            
+            // 如果按了数字键，执行对应服务
+            for (int i = 0; i <= 9; i++)
             {
-                restaurant.ProvideService(gameObject, "free_water");
-                Debug.Log("[NPCDebugger] 获得免费水");
+                if (Input.GetKeyDown(KeyCode.Alpha0 + i))
+                {
+                    if (i == 0 && restaurantData.provideFreeWater)
+                    {
+                        // 免费水
+                        restaurant.ProvideService(gameObject, "free_water");
+                        Debug.Log("[NPCDebugger] 获得免费水");
+                        return;
+                    }
+                    else if (i > 0 && i <= restaurantData.menu.Count)
+                    {
+                        // 菜单项（i-1因为菜单从0开始）
+                        var menuItem = restaurantData.menu[i - 1];
+                        if (restaurant.CanProvideService(gameObject, menuItem.itemName))
+                        {
+                            restaurant.ProvideService(gameObject, menuItem.itemName);
+                            Debug.Log($"[NPCDebugger] 点餐: {menuItem.itemName} - 花费 {menuItem.price} 金币");
+                        }
+                        else
+                        {
+                            Debug.Log($"[NPCDebugger] 无法购买: {menuItem.itemName} (金币不足)");
+                        }
+                        return;
+                    }
+                }
             }
-            // 测试食物
-            else if (restaurantData.menu.Count > 0)
+            
+            // 如果没有按数字键，显示提示
+            Debug.Log("[NPCDebugger] 餐厅服务 - 按数字键选择:");
+            if (restaurantData.provideFreeWater)
             {
-                int index = Mathf.Clamp(testItemIndex, 0, restaurantData.menu.Count - 1);
-                var menuItem = restaurantData.menu[index];
-                
-                if (restaurant.CanProvideService(gameObject, menuItem.itemName))
-                {
-                    restaurant.ProvideService(gameObject, menuItem.itemName);
-                    Debug.Log($"[NPCDebugger] 点餐: {menuItem.itemName}");
-                }
-                else
-                {
-                    Debug.Log($"[NPCDebugger] 无法购买: {menuItem.itemName} (金币不足)");
-                }
+                Debug.Log("  [0] 免费水");
+            }
+            for (int i = 0; i < restaurantData.menu.Count && i < 9; i++)
+            {
+                var item = restaurantData.menu[i];
+                Debug.Log($"  [{i + 1}] {item.itemName} - {item.price}金币");
             }
         }
         
@@ -1071,15 +1664,15 @@ namespace PlayerDebug
             GUI.Box(panelRect, "", panelStyle);
             
             GUILayout.BeginArea(panelRect);
-            GUILayout.Space(10);
+            GUILayout.Space(5);
             
             // 标题
-            GUILayout.Label("NPC INTERACTION DEBUGGER", headerStyle);
-            GUILayout.Space(10);
+            GUILayout.Label("NPC DEBUGGER", headerStyle);
+            GUILayout.Space(3);
             
             // 玩家信息
             DrawPlayerInfo();
-            GUILayout.Space(10);
+            GUILayout.Space(3);
             
             // NPC信息
             if (currentNPC != null)
@@ -1088,10 +1681,10 @@ namespace PlayerDebug
             }
             else
             {
-                GUILayout.Label("No NPC in interaction range", labelStyle);
+                GUILayout.Label("No NPC in range", labelStyle);
             }
             
-            GUILayout.Space(10);
+            GUILayout.Space(3);
             
             // 功能操作说明
             DrawFunctionGuide();
@@ -1105,16 +1698,14 @@ namespace PlayerDebug
         
         private void DrawPlayerInfo()
         {
-            GUILayout.Label("=== PLAYER STATUS ===", headerStyle);
+            GUILayout.Label("=== PLAYER ===", headerStyle);
             
+            // 合并单行信息
+            string playerStatus = "";
             if (currencyManager != null)
             {
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Gold:", labelStyle, GUILayout.Width(80));
-                GUILayout.Label(currencyManager.CurrentGold.ToString(), valueStyle);
-                GUILayout.EndHorizontal();
+                playerStatus += $"Gold:{currencyManager.CurrentGold} ";
             }
-            
             if (playerInventory != null)
             {
                 int usedSlots = 0;
@@ -1123,41 +1714,57 @@ namespace PlayerDebug
                     if (!playerInventory.GetSlot(i).IsEmpty)
                         usedSlots++;
                 }
-                
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Inventory:", labelStyle, GUILayout.Width(80));
-                GUILayout.Label($"{usedSlots}/{playerInventory.Size}", valueStyle);
-                GUILayout.EndHorizontal();
-                
-                // Show inventory items for selling
-                GUILayout.Space(5);
-                GUILayout.Label("=== INVENTORY (P+Number to sell) ===", headerStyle);
-                for (int i = 0; i < playerInventory.Size && i < 10; i++)
+                playerStatus += $"Bag:{usedSlots}/{playerInventory.Size} ";
+            }
+            if (ammoManager != null)
+            {
+                playerStatus += $"B:{ammoManager.GetAmmo(AmmoType.Bullets)} A:{ammoManager.GetAmmo(AmmoType.Arrows)} M:{ammoManager.GetAmmo(AmmoType.Mana)}";
+            }
+            GUILayout.Label(playerStatus, labelStyle);
+            
+            if (playerInventory != null)
+            {
+                GUILayout.Label("=== INVENTORY (P+Num) ===", headerStyle);
+                // 每行显示2个物品，减少行数
+                for (int i = 0; i < playerInventory.Size && i < 10; i += 2)
                 {
-                    var slot = playerInventory.GetSlot(i);
-                    int keyNumber = (i + 1) % 10;
+                    GUILayout.BeginHorizontal();
                     
-                    if (slot != null && !slot.IsEmpty && slot.Item != null)
+                    // 第一个物品
+                    var slot1 = playerInventory.GetSlot(i);
+                    int keyNumber1 = (i + 1) % 10;
+                    string item1Text = "";
+                    if (slot1 != null && !slot1.IsEmpty && slot1.Item != null)
                     {
-                        var sellPrice = slot.Item.SellPrice * slot.Quantity;
-                        GUILayout.Label($"[P+{keyNumber}] {slot.Item.ItemName} x{slot.Quantity} - {sellPrice}g", labelStyle);
+                        var sellPrice = slot1.Item.SellPrice * slot1.Quantity;
+                        item1Text = $"[P+{keyNumber1}]{slot1.Item.ItemName}x{slot1.Quantity}-{sellPrice}g";
                     }
                     else
                     {
-                        GUILayout.Label($"[P+{keyNumber}] Empty", labelStyle);
+                        item1Text = $"[P+{keyNumber1}]Empty";
                     }
+                    GUILayout.Label(item1Text, labelStyle, GUILayout.Width(panelWidth/2 - 20));
+                    
+                    // 第二个物品（如果存在）
+                    if (i + 1 < playerInventory.Size && i + 1 < 10)
+                    {
+                        var slot2 = playerInventory.GetSlot(i + 1);
+                        int keyNumber2 = (i + 2) % 10;
+                        string item2Text = "";
+                        if (slot2 != null && !slot2.IsEmpty && slot2.Item != null)
+                        {
+                            var sellPrice = slot2.Item.SellPrice * slot2.Quantity;
+                            item2Text = $"[P+{keyNumber2}]{slot2.Item.ItemName}x{slot2.Quantity}-{sellPrice}g";
+                        }
+                        else
+                        {
+                            item2Text = $"[P+{keyNumber2}]Empty";
+                        }
+                        GUILayout.Label(item2Text, labelStyle);
+                    }
+                    
+                    GUILayout.EndHorizontal();
                 }
-            }
-            
-            if (ammoManager != null)
-            {
-                GUILayout.Space(5);
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Ammo:", labelStyle, GUILayout.Width(80));
-                GUILayout.Label($"Bullets:{ammoManager.GetAmmo(AmmoType.Bullets)} " +
-                               $"Arrows:{ammoManager.GetAmmo(AmmoType.Arrows)} " +
-                               $"Mana:{ammoManager.GetAmmo(AmmoType.Mana)}", valueStyle);
-                GUILayout.EndHorizontal();
             }
         }
         
@@ -1165,8 +1772,6 @@ namespace PlayerDebug
         {
             GUILayout.Label("=== NPC INFO ===", headerStyle);
             GUILayout.Label(cachedNPCInfo, labelStyle);
-            
-            GUILayout.Space(10);
             
             if (!string.IsNullOrEmpty(cachedShopInfo))
             {
@@ -1177,57 +1782,240 @@ namespace PlayerDebug
         
         private void DrawFunctionGuide()
         {
-            GUILayout.Label("=== AVAILABLE FUNCTIONS ===", headerStyle);
+            GUILayout.Label("=== CONTROLS ===", headerStyle);
             
             if (currentNPC == null) return;
             
-            GUILayout.Label("Alt+1 - Start Dialogue", labelStyle);
-            
-            // 显示每个NPC特有的功能
-            if (currentNPC is MerchantNPC)
+            switch (currentMode)
             {
-                GUILayout.Label("B+Number - Buy Shop Item", labelStyle);
-                GUILayout.Label("P+Number - Sell Inventory Item", labelStyle);
+                case InteractionMode.None:
+                    GUILayout.Label("SPACE/ENTER: Start interaction", labelStyle);
+                    break;
+                    
+                case InteractionMode.MainMenu:
+                    GUILayout.Label("Number keys: Select option", labelStyle);
+                    GUILayout.Label("ESC: Exit", labelStyle);
+                    break;
+                    
+                case InteractionMode.BuyMenu:
+                case InteractionMode.SellMenu:
+                case InteractionMode.ServiceSelect:
+                    GUILayout.Label("Number keys: Select item", labelStyle);
+                    GUILayout.Label("0: Back | ESC: Exit", labelStyle);
+                    break;
+                    
+                case InteractionMode.ServiceMenu:
+                    GUILayout.Label("Number keys: Select service", labelStyle);
+                    GUILayout.Label("0: Back | ESC: Exit", labelStyle);
+                    break;
+                    
+                default:
+                    GUILayout.Label("ESC: Exit menu", labelStyle);
+                    break;
             }
-            else if (currentNPC is DoctorNPC doctor)
-            {
-                var doctorData = doctor.Data as DoctorData;
-                if (doctorData?.medicineShop?.items?.Count > 0)
-                {
-                    GUILayout.Label("B+Number - Buy Medicine", labelStyle);
-                }
-                GUILayout.Label("P+Number - Sell Inventory Item", labelStyle);
-                GUILayout.Label("Alt+2 - Medical Service", labelStyle);
-            }
-            else if (currentNPC is BlacksmithNPC)
-            {
-                GUILayout.Label("P+Number - Sell Inventory Item", labelStyle);
-                GUILayout.Label("Alt+2 - Craft Item", labelStyle);
-                GUILayout.Label("Alt+3 - Upgrade Weapon", labelStyle);
-            }
-            else if (currentNPC is RestaurantNPC)
-            {
-                GUILayout.Label("Alt+2 - Order Food", labelStyle);
-            }
-            else if (currentNPC is TailorNPC)
-            {
-                GUILayout.Label("P+Number - Sell Inventory Item", labelStyle);
-                GUILayout.Label("Alt+2 - Expand Bag", labelStyle);
-            }
-            
-            GUILayout.Space(5);
-            GUILayout.Label($"Selected Service Index: {testItemIndex} (use 1-9 to change)", valueStyle);
         }
         
         private void DrawControlHints()
         {
-            GUILayout.Label("=== CONTROLS ===", headerStyle);
-            GUILayout.Label("F4 - Toggle Panel", labelStyle);
-            GUILayout.Label("L - Toggle Details", labelStyle);
-            GUILayout.Label("1-9 - Select Service Index", labelStyle);
-            GUILayout.Label("B+Number - Buy Item", labelStyle);
-            GUILayout.Label("P+Number - Sell Item", labelStyle);
-            GUILayout.Label("Alt+1~3 - Special Functions", labelStyle);
+            GUILayout.Label("=== INFO ===", headerStyle);
+            GUILayout.Label("F4: Toggle panel", labelStyle);
+            GUILayout.Label("L: Toggle details", labelStyle);
+        }
+        
+        private string GetNPCOverviewInfo()
+        {
+            if (currentNPC == null) return "Press SPACE or ENTER to interact";
+            
+            StringBuilder sb = new StringBuilder();
+            sb.AppendLine("Press SPACE or ENTER to interact");
+            sb.AppendLine();
+            
+            Debug.Log($"[NPCDebugger] GetNPCOverviewInfo - currentNPC type: {currentNPC.GetType().Name}");
+            
+            // 显示NPC具体信息
+            if (currentNPC is MerchantNPC merchant)
+            {
+                Debug.Log($"[NPCDebugger] Found MerchantNPC, checking data...");
+                var merchantData = merchant.Data as MerchantData;
+                Debug.Log($"[NPCDebugger] MerchantData: {merchantData != null}, Shop: {merchantData?.shopInventory != null}, Items: {merchantData?.shopInventory?.items?.Count ?? 0}");
+                
+                if (merchantData?.shopInventory?.items != null && merchantData.shopInventory.items.Count > 0)
+                {
+                    sb.AppendLine("=== SHOP INVENTORY ===");
+                    float priceMultiplier = merchant.GetPriceMultiplier();
+                    sb.AppendLine($"Price Multiplier: {priceMultiplier:F2}x");
+                    
+                    for (int i = 0; i < merchantData.shopInventory.items.Count && i < 5; i++)
+                    {
+                        var shopItem = merchantData.shopInventory.items[i];
+                        if (shopItem.item != null)
+                        {
+                            float basePrice = shopItem.priceOverride > 0 ? shopItem.priceOverride : shopItem.item.BuyPrice;
+                            float finalPrice = basePrice * priceMultiplier;
+                            string stockText = shopItem.stock == -1 ? "∞" : shopItem.stock.ToString();
+                            sb.AppendLine($"• {shopItem.item.ItemName} - ${finalPrice:F0} (Stock: {stockText})");
+                        }
+                    }
+                    if (merchantData.shopInventory.items.Count > 5)
+                    {
+                        sb.AppendLine($"... and {merchantData.shopInventory.items.Count - 5} more items");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine("=== SHOP ===");
+                    sb.AppendLine("No items in stock");
+                }
+            }
+            else if (currentNPC is DoctorNPC doctor)
+            {
+                Debug.Log($"[NPCDebugger] Found DoctorNPC, checking data...");
+                var doctorData = doctor.Data as DoctorData;
+                Debug.Log($"[NPCDebugger] DoctorData: {doctorData != null}, Services: {doctorData?.services?.Count ?? 0}, MedicineShop: {doctorData?.medicineShop?.items?.Count ?? 0}");
+                
+                if (doctorData != null)
+                {
+                    // 显示医疗服务
+                    if (doctorData.services != null && doctorData.services.Count > 0)
+                    {
+                        sb.AppendLine("=== MEDICAL SERVICES ===");
+                        for (int i = 0; i < doctorData.services.Count && i < 3; i++)
+                        {
+                            var service = doctorData.services[i];
+                            int cost = doctor.GetServiceCost(service.serviceName);
+                            sb.AppendLine($"• {service.serviceName} - ${cost}");
+                        }
+                        if (doctorData.services.Count > 3)
+                        {
+                            sb.AppendLine($"... and {doctorData.services.Count - 3} more services");
+                        }
+                    }
+                    
+                    // 显示药品商店
+                    if (doctorData.medicineShop?.items != null && doctorData.medicineShop.items.Count > 0)
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("=== MEDICINE SHOP ===");
+                        for (int i = 0; i < doctorData.medicineShop.items.Count && i < 3; i++)
+                        {
+                            var shopItem = doctorData.medicineShop.items[i];
+                            if (shopItem.item != null)
+                            {
+                                float price = shopItem.priceOverride > 0 ? shopItem.priceOverride : shopItem.item.BuyPrice;
+                                price *= doctorData.medicinePriceMultiplier;
+                                sb.AppendLine($"• {shopItem.item.ItemName} - ${price:F0}");
+                            }
+                        }
+                        if (doctorData.medicineShop.items.Count > 3)
+                        {
+                            sb.AppendLine($"... and {doctorData.medicineShop.items.Count - 3} more medicines");
+                        }
+                    }
+                    else
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("=== MEDICINE SHOP ===");
+                        sb.AppendLine("No medicines in stock");
+                    }
+                }
+            }
+            else if (currentNPC is RestaurantNPC restaurant)
+            {
+                var restaurantData = restaurant.Data as RestaurantData;
+                if (restaurantData != null)
+                {
+                    sb.AppendLine("=== RESTAURANT MENU ===");
+                    if (restaurantData.provideFreeWater)
+                    {
+                        sb.AppendLine("• Free Water (Free)");
+                    }
+                    
+                    if (restaurantData.menu != null && restaurantData.menu.Count > 0)
+                    {
+                        for (int i = 0; i < restaurantData.menu.Count && i < 4; i++)
+                        {
+                            var item = restaurantData.menu[i];
+                            sb.AppendLine($"• {item.itemName} - ${item.price}");
+                        }
+                        if (restaurantData.menu.Count > 4)
+                        {
+                            sb.AppendLine($"... and {restaurantData.menu.Count - 4} more dishes");
+                        }
+                    }
+                }
+            }
+            else if (currentNPC is BlacksmithNPC blacksmith)
+            {
+                var blacksmithData = blacksmith.Data as BlacksmithData;
+                if (blacksmithData != null)
+                {
+                    sb.AppendLine("=== BLACKSMITH SERVICES ===");
+                    sb.AppendLine("• Weapon Crafting");
+                    sb.AppendLine("• Weapon Upgrade");
+                    
+                    if (blacksmithData.recipes != null && blacksmithData.recipes.Count > 0)
+                    {
+                        sb.AppendLine();
+                        sb.AppendLine("Available Recipes:");
+                        for (int i = 0; i < blacksmithData.recipes.Count && i < 3; i++)
+                        {
+                            var recipe = blacksmithData.recipes[i];
+                            sb.AppendLine($"• {recipe.recipeName} - ${recipe.craftingFee}");
+                        }
+                        if (blacksmithData.recipes.Count > 3)
+                        {
+                            sb.AppendLine($"... and {blacksmithData.recipes.Count - 3} more recipes");
+                        }
+                    }
+                }
+            }
+            else if (currentNPC is TailorNPC tailor)
+            {
+                var tailorData = tailor.Data as TailorData;
+                if (tailorData != null)
+                {
+                    sb.AppendLine("=== TAILOR SERVICES ===");
+                    sb.AppendLine("• Bag Expansion");
+                    
+                    if (tailorData.bagUpgrades != null && tailorData.bagUpgrades.Count > 0)
+                    {
+                        int currentSlots = playerInventory != null ? playerInventory.GetMaxSlots() : 10;
+                        var availableUpgrades = tailorData.bagUpgrades.FindAll(u => 
+                            currentSlots >= u.requiredCurrentSlots && currentSlots < u.maxSlots);
+                        
+                        if (availableUpgrades.Count > 0)
+                        {
+                            sb.AppendLine("Available Upgrades:");
+                            foreach (var upgrade in availableUpgrades.Take(2))
+                            {
+                                int cost = (int)(upgrade.upgradeFee * tailorData.upgradePriceMultiplier);
+                                sb.AppendLine($"• {upgrade.upgradeName} - ${cost} (+{upgrade.slotsToAdd} slots)");
+                            }
+                        }
+                        else
+                        {
+                            sb.AppendLine("Max capacity reached or no upgrades available");
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 未识别的NPC类型
+                Debug.Log($"[NPCDebugger] Unrecognized NPC type: {currentNPC.GetType().Name}");
+                sb.AppendLine($"=== UNKNOWN NPC TYPE ===");
+                sb.AppendLine($"Type: {currentNPC.GetType().Name}");
+                if (currentNPC.Data != null)
+                {
+                    sb.AppendLine($"Data: {currentNPC.Data.npcName} ({currentNPC.Data.npcType})");
+                }
+                else
+                {
+                    sb.AppendLine("No NPC data found!");
+                }
+            }
+            
+            return sb.ToString();
         }
         
     }

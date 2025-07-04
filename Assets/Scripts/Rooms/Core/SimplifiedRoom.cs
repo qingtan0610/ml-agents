@@ -246,6 +246,7 @@ namespace Rooms.Core
             else if (enemyPrefab != null)
             {
                 // 降级方案：使用默认敌人预制体
+                Debug.LogWarning($"[SimplifiedRoom] Using fallback enemy prefab in monster room at {gridPosition}");
                 int count = Random.Range(3, 6);
                 Transform[] randomSpawnPoints = GenerateRandomSpawnPoints(count);
                 foreach (var point in randomSpawnPoints)
@@ -261,6 +262,15 @@ namespace Rooms.Core
                     
                     activeEnemies.Add(enemy);
                 }
+            }
+            else
+            {
+                // 完全没有怪物配置！
+                Debug.LogError($"[SimplifiedRoom] CRITICAL: Monster room at {gridPosition} has no monster pool AND no enemy prefab! Room will not function correctly.");
+                Debug.LogError($"[SimplifiedRoom] RoomSystemConfig: {roomSystemConfig != null}, MonsterPool from config: {roomSystemConfig?.GetMonsterPool(roomType) != null}, EnemyPrefab: {enemyPrefab != null}");
+                
+                // 标记房间为已清理，避免锁门
+                isCleared = true;
             }
         }
         
@@ -636,18 +646,17 @@ namespace Rooms.Core
             {
                 Debug.Log($"[Room] Monster room check - Cleared: {isCleared}, Enemy count: {activeEnemies.Count}");
                 
-                // 如果还没有生成怪物，先生成
-                if (activeEnemies.Count == 0 && !isCleared)
-                {
-                    Debug.Log($"[Room] No enemies yet, spawning monsters first");
-                    SpawnMonsters();
-                }
-                
                 // 如果有怪物，锁定门
                 if (activeEnemies.Count > 0)
                 {
                     Debug.Log($"[Room] Locking doors, enemy count: {activeEnemies.Count}");
                     LockDoorsExcept(entryDirection);
+                }
+                else
+                {
+                    Debug.LogWarning($"[Room] Monster room at {gridPosition} has no enemies! This should not happen if monsters were properly spawned during Initialize.");
+                    // 不要在这里重新生成怪物，因为Initialize已经尝试过了
+                    // 如果失败了，重复尝试也不会成功
                 }
             }
         }
