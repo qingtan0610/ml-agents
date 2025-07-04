@@ -1,0 +1,54 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d42de37162f89c44eb1849d023d9970a, type: 3}
+  m_Name: Weapon_Sword
+  m_EditorClassIdentifier: 
+  itemId: 1001
+  itemName: Weapon_Sword
+  description: "\u5251\uFF08\u8FD1\u6218\uFF09"
+  icon: {fileID: 21300000, guid: 74f4a5633902811408c2f5080f11b479, type: 3}
+  itemType: 1
+  rarity: 0
+  maxStackSize: 1
+  buyPrice: 100
+  sellPrice: 50
+  isDroppable: 1
+  isTradeable: 1
+  isDestroyable: 1
+  weaponType: 0
+  damage: 30
+  attackSpeed: 1
+  attackRange: 5
+  projectileSpeed: 10
+  attackShape: 0
+  effectRadius: 0
+  sectorAngle: 90
+  rectangleWidth: 2
+  requiredAmmo: 0
+  ammoPerShot: 1
+  attackAnimation: Attack
+  knockback: 3
+  criticalChance: 0.05
+  criticalMultiplier: 2
+  isPiercing: 0
+  maxPierceTargets: 1
+  hitEffectPrefab: {fileID: 0}
+  attackSound: {fileID: 0}
+  hitSound: {fileID: 0}
+  onHitDebuffs:
+  - {fileID: 11400000, guid: e26ff2889d4484745b4802ab023edec7, type: 2}
+  debuffChance: 100
+  debuffRequiresCrit: 0
+  weaponModelPrefab: {fileID: 0}
+  projectilePrefab: {fileID: 0}
+  holdOffset: {x: 0, y: 0, z: 0}
+  holdRotation: {x: 0, y: 0, z: 0}

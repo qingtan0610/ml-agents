@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d42de37162f89c44eb1849d023d9970a, type: 3}
+  m_Name: Weapon_Bow
+  m_EditorClassIdentifier: 
+  itemId: 1002
+  itemName: Weapon_Bow
+  description: "\u5F13\uFF08\u8FDC\u7A0B\uFF09"
+  icon: {fileID: 21300000, guid: e87eca56f3cdc024391bd10ae9df9a6a, type: 3}
+  itemType: 1
+  rarity: 0
+  maxStackSize: 1
+  buyPrice: 100
+  sellPrice: 50
+  isDroppable: 1
+  isTradeable: 1
+  isDestroyable: 1
+  weaponType: 1
+  damage: 60
+  attackSpeed: 1
+  attackRange: 10
+  projectileSpeed: 10
+  attackShape: 0
+  effectRadius: 0
+  sectorAngle: 90
+  rectangleWidth: 2
+  requiredAmmo: 2
+  ammoPerShot: 1
+  attackAnimation: Attack
+  knockback: 0
+  criticalChance: 0.05
+  criticalMultiplier: 2
+  isPiercing: 0
+  maxPierceTargets: 1
+  hitEffectPrefab: {fileID: 0}
+  attackSound: {fileID: 0}
+  hitSound: {fileID: 0}
+  onHitDebuffs: []
+  debuffChance: 1
+  debuffRequiresCrit: 0
+  weaponModelPrefab: {fileID: 0}
+  projectilePrefab: {fileID: 9023270107703298815, guid: af4543b65692fba4f952515a8abc59b0, type: 3}
+  holdOffset: {x: 0, y: 0, z: 0}
+  holdRotation: {x: 0, y: 0, z: 0}

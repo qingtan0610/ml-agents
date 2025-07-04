@@ -1,0 +1,92 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 28f8a112f09ef714da26b53ff64ec32b, type: 3}
+  m_Name: RoomSystemConfig
+  m_EditorClassIdentifier: 
+  spawnRoom:
+    displayName: "\u51FA\u751F\u623F\u95F4"
+    minimapColor: {r: 0, g: 1, b: 0, a: 1}
+    roomPool: {fileID: 11400000, guid: ca27528f66375a44a9bf2b605ce844f8, type: 2}
+    minPerMap: 1
+    maxPerMap: 1
+    spawnWeight: 1
+    minMapLevel: 1
+  monsterRoom:
+    displayName: "\u602A\u7269\u623F\u95F4"
+    minimapColor: {r: 1, g: 0, b: 0, a: 1}
+    roomPool: {fileID: 11400000, guid: ca27528f66375a44a9bf2b605ce844f8, type: 2}
+    minPerMap: 5
+    maxPerMap: 10
+    spawnWeight: 1
+    minMapLevel: 1
+    monsterPool: {fileID: 11400000, guid: 9d9aecbd36c01044fb0bce841fcfefaa, type: 2}
+    minMonsterCount: 3
+    maxMonsterCount: 6
+    maxMonsterDifficulty: 5
+    lockDoorsOnEntry: 1
+    requiresClearance: 1
+  treasureRoom:
+    displayName: "\u5B9D\u7BB1\u623F\u95F4"
+    minimapColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+    roomPool: {fileID: 11400000, guid: ca27528f66375a44a9bf2b605ce844f8, type: 2}
+    minPerMap: 2
+    maxPerMap: 4
+    spawnWeight: 1
+    minMapLevel: 1
+    specialPrefab: {fileID: 5950045792763180259, guid: 9719f588514deca49b19fd62ddc949be, type: 3}
+    spawnInCenter: 1
+  fountainRoom:
+    displayName: "\u6CC9\u6C34\u623F\u95F4"
+    minimapColor: {r: 0, g: 1, b: 1, a: 1}
+    roomPool: {fileID: 11400000, guid: ca27528f66375a44a9bf2b605ce844f8, type: 2}
+    minPerMap: 1
+    maxPerMap: 3
+    spawnWeight: 1
+    minMapLevel: 1
+    specialPrefab: {fileID: 4472654386967797779, guid: 88ef1e277f293a44cb68cd5745946aad, type: 3}
+    spawnInCenter: 1
+  teleportRoom:
+    displayName: "\u4F20\u9001\u623F\u95F4"
+    minimapColor: {r: 1, g: 0, b: 1, a: 1}
+    roomPool: {fileID: 11400000, guid: ca27528f66375a44a9bf2b605ce844f8, type: 2}
+    minPerMap: 1
+    maxPerMap: 1
+    spawnWeight: 1
+    minMapLevel: 1
+    specialPrefab: {fileID: 4746300040451879339, guid: 2c69845d4b0b0514ab2202fc8184cac3, type: 3}
+    spawnInCenter: 1
+  npcRoom:
+    displayName: "NPC\u623F\u95F4"
+    minimapColor: {r: 0, g: 0, b: 1, a: 1}
+    roomPool: {fileID: 11400000, guid: ca27528f66375a44a9bf2b605ce844f8, type: 2}
+    minPerMap: 3
+    maxPerMap: 8
+    spawnWeight: 1
+    minMapLevel: 1
+    npcPool: {fileID: 11400000, guid: 0cd5316a2de91a1468c6bd143c42ef0c, type: 2}
+    allowRandomNPC: 1
+  bossRoom:
+    displayName: "Boss\u623F\u95F4"
+    minimapColor: {r: 0.5, g: 0, b: 0, a: 1}
+    roomPool: {fileID: 0}
+    minPerMap: 0
+    maxPerMap: 1
+    spawnWeight: 0
+    minMapLevel: 5
+    monsterPool: {fileID: 0}
+    minMonsterCount: 3
+    maxMonsterCount: 6
+    maxMonsterDifficulty: 5
+    lockDoorsOnEntry: 1
+    requiresClearance: 1
+    isMiniBoss: 0
+    bossHealthMultiplier: 5

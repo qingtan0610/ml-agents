@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8738622335518044bbc31024d819a4a8, type: 3}
+  m_Name: DefaultAIStatsConfig
+  m_EditorClassIdentifier: 
+  initialHealth: 100
+  initialHunger: 100
+  initialThirst: 100
+  initialStamina: 100
+  initialArmor: 0
+  initialToughness: 50
+  initialBullets: 30
+  initialArrows: 20
+  initialMana: 50
+  maxHealth: 100
+  maxHunger: 100
+  maxThirst: 100
+  maxStamina: 100
+  maxArmor: 100
+  maxToughness: 100
+  maxBullets: 999
+  maxArrows: 999
+  maxMana: 100
+  hungerDepletionRate: 0.5
+  thirstDepletionRate: 0.8
+  staminaRecoveryRate: 2
+  staminaDepletionRate: 5
+  criticalHealthThreshold: 30
+  criticalHungerThreshold: 30
+  criticalThirstThreshold: 30
+  healthMoodImpact: 0.3
+  hungerMoodImpact: 0.2
+  thirstMoodImpact: 0.2
+  staminaMoodImpact: 0.1
+  socialDecayRate: 0.01
+  clearMoneyOnHealthDeath: 1
+  clearMoneyOnHungerDeath: 1
+  clearPotionsOnThirstDeath: 1
+  clearEquipmentOnHealthDeath: 1
+  respawnStatPercentage: 0.5

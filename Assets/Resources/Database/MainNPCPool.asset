@@ -1,0 +1,47 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe8c15d6be0d2dd48916474fdc81ab77, type: 3}
+  m_Name: MainNPCPool
+  m_EditorClassIdentifier: 
+  npcEntries:
+  - npcData: {fileID: 11400000, guid: bb214c97947864b4c8a482ea39f9da34, type: 2}
+    npcPrefab: {fileID: 501751252737554803, guid: b97ed33df744bf94faee28dc742e351d, type: 3}
+    spawnWeight: 1
+    minMapLevel: 1
+    maxMapLevel: 99
+    isUnique: 0
+  - npcData: {fileID: 11400000, guid: c10dc8bc0e486424aa5569e58d5544d8, type: 2}
+    npcPrefab: {fileID: 8978312837343609469, guid: 62d7fb10247cddc48829cafb90c114a9, type: 3}
+    spawnWeight: 1
+    minMapLevel: 1
+    maxMapLevel: 99
+    isUnique: 0
+  - npcData: {fileID: 11400000, guid: 5cdfe2b44cf92c342bd4e16db8e11008, type: 2}
+    npcPrefab: {fileID: 7153759019538701784, guid: 4a352dde493fe9b469d23cf3894a1ab3, type: 3}
+    spawnWeight: 1
+    minMapLevel: 1
+    maxMapLevel: 99
+    isUnique: 0
+  - npcData: {fileID: 11400000, guid: 870bf1de61e16f3429a21f4187361370, type: 2}
+    npcPrefab: {fileID: 7842183888418722289, guid: e6f830c560a56554cb91a14855596309, type: 3}
+    spawnWeight: 1
+    minMapLevel: 1
+    maxMapLevel: 99
+    isUnique: 0
+  - npcData: {fileID: 11400000, guid: 054a91bb1900a8d46b202bdffa45631c, type: 2}
+    npcPrefab: {fileID: 7627927531986518590, guid: e06e252abb4fc2c46816770a1d8bcfdb, type: 3}
+    spawnWeight: 1
+    minMapLevel: 1
+    maxMapLevel: 99
+    isUnique: 0
+  allowDuplicates: 0
+  maxNPCsPerType: 3

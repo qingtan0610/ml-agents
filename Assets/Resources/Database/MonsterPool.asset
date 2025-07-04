@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: abaa260196a046f4e9da0d6bca4ebda0, type: 3}
+  m_Name: MonsterPool
+  m_EditorClassIdentifier: 
+  monsters:
+  - monsterName: melee
+    prefab: {fileID: 7529980435701389738, guid: 68350f821157de84ab884977b0ddd83b, type: 3}
+    difficulty: 0
+    spawnWeight: 0.406
+    minMapLevel: 0
+    maxMapLevel: 99
+    minGroupSize: 1
+    maxGroupSize: 99
+    isElite: 0
+    isBoss: 0
+  - monsterName: range
+    prefab: {fileID: 5981031661468250606, guid: a173a0bff075a7f419a07b3efff6395c, type: 3}
+    difficulty: 0
+    spawnWeight: 0.46
+    minMapLevel: 0
+    maxMapLevel: 99
+    minGroupSize: 1
+    maxGroupSize: 99
+    isElite: 0
+    isBoss: 0
