@@ -257,10 +257,11 @@ namespace Player
             aiStats?.ModifyStat(StatType.Health, -finalDamage, StatChangeReason.Combat);
             
             // 显示伤害数字
-            Debug.Log($"Player took {finalDamage:F1} damage from {attacker.name}");
+            string attackerName = attacker != null ? attacker.name : "Unknown";
+            Debug.Log($"Player took {finalDamage:F1} damage from {attackerName}");
             
             // 击退效果
-            if (damageInfo != null && damageInfo.knockback > 0)
+            if (damageInfo != null && damageInfo.knockback > 0 && attacker != null)
             {
                 Vector2 knockbackDir = ((Vector2)transform.position - (Vector2)attacker.transform.position).normalized;
                 rb.AddForce(knockbackDir * damageInfo.knockback, ForceMode2D.Impulse);

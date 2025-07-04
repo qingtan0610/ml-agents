@@ -189,30 +189,36 @@ namespace Rooms.Core
                 int spawnCount = Random.Range(minCount, maxCount + 1);
                 Transform[] randomSpawnPoints = GenerateRandomSpawnPoints(spawnCount);
                 
-                // 选择怪物类型
-                var monsterEntry = monsterPool.GetRandomMonster(1, maxDifficulty);
-                if (monsterEntry != null)
+                // 为每个生成点随机选择不同的怪物
+                Debug.Log($"[SimplifiedRoom] Spawning {spawnCount} monsters with mixed types");
+                
+                foreach (var spawnPoint in randomSpawnPoints)
                 {
-                    Debug.Log($"[SimplifiedRoom] Spawning {monsterEntry.monsterName} group at random positions");
-                    var monsters = monsterPool.SpawnMonsterGroup(monsterEntry, randomSpawnPoints, transform);
-                    
-                    // 为每个怪物设置死亡回调
-                    foreach (var monster in monsters)
+                    // 每个位置都随机选择一种怪物
+                    var monsterEntry = monsterPool.GetRandomMonster(1, maxDifficulty);
+                    if (monsterEntry != null)
                     {
-                        var enemy = monster.GetComponent<Enemy.Enemy2D>();
-                        if (enemy != null)
+                        // 生成单个怪物（使用只有一个位置的数组）
+                        var singleSpawnPoint = new Transform[] { spawnPoint };
+                        var monsters = monsterPool.SpawnMonsterGroup(monsterEntry, singleSpawnPoint, transform);
+                        
+                        if (monsters != null && monsters.Count > 0)
                         {
-                            // 在怪物死亡时通知房间
-                            StartCoroutine(MonitorEnemyDeath(monster));
+                            foreach (var monster in monsters)
+                            {
+                                var enemy = monster.GetComponent<Enemy.Enemy2D>();
+                                if (enemy != null)
+                                {
+                                    // 在怪物死亡时通知房间
+                                    StartCoroutine(MonitorEnemyDeath(monster));
+                                }
+                                activeEnemies.Add(monster);
+                            }
                         }
                     }
-                    
-                    activeEnemies.AddRange(monsters);
                 }
-                else
-                {
-                    Debug.LogWarning($"[SimplifiedRoom] No suitable monster found for level 1, difficulty {maxDifficulty}");
-                }
+                
+                Debug.Log($"[SimplifiedRoom] Spawned {activeEnemies.Count} monsters total");
             }
             else if (enemyPrefab != null)
             {
