@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      06_apple_pie_dish_0: 1109132893433667816
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

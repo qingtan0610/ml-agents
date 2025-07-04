@@ -17,6 +17,9 @@ namespace Inventory
         [SerializeField] private int inventorySize = 10;
         [SerializeField] private int hotbarSize = 5;
         
+        [Header("Drop Settings")]
+        [SerializeField] private GameObject unifiedPickupPrefab; // 拖入UnifiedPickup预制体
+        
         [Header("Inventory Data")]
         [SerializeField] private List<ItemSlot> slots = new List<ItemSlot>();
         [SerializeField] private WeaponItem equippedWeapon;
@@ -264,12 +267,39 @@ namespace Inventory
         
         private void Update()
         {
-            // Hotbar key bindings
-            for (int i = 0; i < hotbarSize; i++)
+            // 检查是否按住Shift键
+            bool isShiftHeld = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+            
+            // Hotbar key bindings (1-9)
+            for (int i = 0; i < Mathf.Min(9, hotbarSize); i++)
             {
                 if (Input.GetKeyDown(KeyCode.Alpha1 + i))
                 {
-                    SelectHotbarSlot(i);
+                    if (isShiftHeld)
+                    {
+                        // Shift+数字键 = 丢弃物品
+                        Debug.Log($"[Inventory] Shift+{i+1} pressed, dropping item from slot {i}");
+                        DropItem(i, 1);
+                    }
+                    else
+                    {
+                        SelectHotbarSlot(i);
+                    }
+                }
+            }
+            
+            // Hotbar key 0 for slot 10
+            if (hotbarSize >= 10 && Input.GetKeyDown(KeyCode.Alpha0))
+            {
+                if (isShiftHeld)
+                {
+                    // Shift+0 = 丢弃第10格物品
+                    Debug.Log("[Inventory] Shift+0 pressed, dropping item from slot 9");
+                    DropItem(9, 1);
+                }
+                else
+                {
+                    SelectHotbarSlot(9);
                 }
             }
             
@@ -278,6 +308,105 @@ namespace Inventory
             {
                 UseSelectedHotbarItem();
             }
+            
+            // Drop selected item
+            if (Input.GetKeyDown(KeyCode.G))
+            {
+                Debug.Log($"[Inventory] G pressed, dropping item from selected slot {selectedHotbarSlot}");
+                DropItem(selectedHotbarSlot, 1);
+            }
+        }
+        
+        #endregion
+        
+        #region Drop Items
+        
+        public bool DropItem(int slotIndex, int quantity = 1)
+        {
+            if (slotIndex < 0 || slotIndex >= slots.Count) return false;
+            
+            var slot = slots[slotIndex];
+            if (slot.IsEmpty) return false;
+            
+            var item = slot.Item;
+            int actualQuantity = Mathf.Min(quantity, slot.Quantity);
+            
+            // 如果是装备中的武器，先卸下
+            if (item is WeaponItem weapon && weapon == equippedWeapon)
+            {
+                UnequipWeapon();
+            }
+            
+            // 创建掉落物
+            if (CreateDroppedItem(item, actualQuantity))
+            {
+                // 从背包移除
+                RemoveItemAt(slotIndex, actualQuantity);
+                return true;
+            }
+            
+            return false;
+        }
+        
+        public void DropAllItems()
+        {
+            for (int i = 0; i < slots.Count; i++)
+            {
+                var slot = slots[i];
+                if (!slot.IsEmpty)
+                {
+                    DropItem(i, slot.Quantity);
+                }
+            }
+        }
+        
+        private bool CreateDroppedItem(ItemBase item, int quantity)
+        {
+            // 优先使用Inspector中指定的预制体
+            GameObject pickupPrefab = unifiedPickupPrefab;
+            
+            // 如果没有指定，尝试从Resources加载
+            if (pickupPrefab == null)
+            {
+                pickupPrefab = Resources.Load<GameObject>("Prefabs/Pickups/UnifiedPickup");
+                if (pickupPrefab == null)
+                {
+                    pickupPrefab = Resources.Load<GameObject>("Pickups/UnifiedPickup");
+                    if (pickupPrefab == null)
+                    {
+                        pickupPrefab = Resources.Load<GameObject>("UnifiedPickup");
+                    }
+                }
+                
+                if (pickupPrefab == null)
+                {
+                    Debug.LogError("[Inventory] UnifiedPickup prefab not found! Please assign it in the Inspector or place it in Resources folder");
+                    return false;
+                }
+            }
+            
+            // 计算掉落位置（在玩家附近随机位置）
+            Vector2 dropDirection = UnityEngine.Random.insideUnitCircle.normalized;
+            if (dropDirection == Vector2.zero) dropDirection = Vector2.right;
+            
+            float dropDistance = UnityEngine.Random.Range(0.5f, 1f); // 减小掉落距离
+            Vector3 dropPosition = transform.position + (Vector3)(dropDirection * dropDistance);
+            
+            // 创建拾取物
+            var droppedItem = Instantiate(pickupPrefab, dropPosition, Quaternion.identity);
+            var pickup = droppedItem.GetComponent<Loot.UnifiedPickup>();
+            
+            if (pickup != null)
+            {
+                pickup.Initialize(item, quantity);
+                
+                // 不添加推力，让物品直接掉在地上
+                Debug.Log($"[Inventory] Dropped {quantity}x {item.ItemName}");
+                return true;
+            }
+            
+            Destroy(droppedItem);
+            return false;
         }
         
         #endregion

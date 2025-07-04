@@ -26,7 +26,7 @@ namespace AI.Stats
         [SerializeField] private bool isMoving = false;
         [SerializeField] private float timeSinceSpawn = 0f;
         
-        // Events
+        // Events - 确保事件被正确初始化
         public StatChangeEvent OnStatChanged = new StatChangeEvent();
         public MoodChangeEvent OnMoodChanged = new MoodChangeEvent();
         public AIDeathEvent OnDeath = new AIDeathEvent();
@@ -39,6 +39,19 @@ namespace AI.Stats
         
         private void Awake()
         {
+            Debug.Log("[AIStats] Awake called");
+            
+            // 确保事件被初始化
+            if (OnDeath == null)
+            {
+                OnDeath = new AIDeathEvent();
+                Debug.Log("[AIStats] OnDeath event was null, created new instance");
+            }
+            else
+            {
+                Debug.Log("[AIStats] OnDeath event already initialized");
+            }
+            
             if (config == null)
             {
                 Debug.LogError("AIStats: No configuration assigned! Please create and assign an AIStatsConfig.");
@@ -49,6 +62,8 @@ namespace AI.Stats
             InitializeStats();
             mood = new AIMood(config);
             mood.OnMoodChanged += HandleMoodChange;
+            
+            Debug.Log($"[AIStats] Awake finished. OnDeath event exists: {OnDeath != null}");
         }
         
         private void InitializeStats()
@@ -139,43 +154,82 @@ namespace AI.Stats
             StatType? deathCause = null;
             
             if (currentStats.ContainsKey(StatType.Health) && currentStats[StatType.Health] <= 0)
+            {
                 deathCause = StatType.Health;
+                Debug.Log($"[AIStats] Death condition met: Health={currentStats[StatType.Health]}");
+            }
             else if (currentStats.ContainsKey(StatType.Hunger) && currentStats[StatType.Hunger] <= 0)
+            {
                 deathCause = StatType.Hunger;
+                Debug.Log($"[AIStats] Death condition met: Hunger={currentStats[StatType.Hunger]}");
+            }
             else if (currentStats.ContainsKey(StatType.Thirst) && currentStats[StatType.Thirst] <= 0)
+            {
                 deathCause = StatType.Thirst;
+                Debug.Log($"[AIStats] Death condition met: Thirst={currentStats[StatType.Thirst]}");
+            }
             
             if (deathCause.HasValue && !isDead)
             {
+                Debug.Log($"[AIStats] Triggering death from {deathCause.Value}");
                 Die(deathCause.Value);
             }
         }
         
         private void Die(StatType cause)
         {
+            Debug.Log($"[AIStats] Die() called - Setting isDead=true, cause={cause}");
             isDead = true;
+            
+            Debug.Log($"[AIStats] Invoking OnDeath event (event exists: {OnDeath != null})");
             OnDeath?.Invoke(new AIDeathEventArgs(cause, transform.position, timeSinceSpawn));
+            
+            Debug.Log($"[AIStats] Death complete. IsDead={isDead}");
         }
         
         public void Respawn(Vector3 spawnPosition, bool applyPenalties = true)
         {
-            if (!isDead) return;
+            if (!isDead)
+            {
+                Debug.LogWarning("[AIStats] Respawn called but not dead!");
+                return;
+            }
             
-            transform.position = spawnPosition;
+            Debug.Log($"[AIStats] Respawning at {spawnPosition}");
+            Debug.Log($"[AIStats] Current position before respawn: {transform.position}");
+            
+            // 先恢复状态值，避免在设置位置后又被检测为死亡
+            float respawnPercent = config != null ? config.respawnStatPercentage : 0.5f;
+            float maxHealthValue = config != null ? config.maxHealth : 100f;
+            float maxHungerValue = config != null ? config.maxHunger : 100f;
+            float maxThirstValue = config != null ? config.maxThirst : 100f;
+            float maxStaminaValue = config != null ? config.maxStamina : 100f;
+            
+            currentStats[StatType.Health] = maxHealthValue * respawnPercent;
+            currentStats[StatType.Hunger] = maxHungerValue * respawnPercent;
+            currentStats[StatType.Thirst] = maxThirstValue * respawnPercent;
+            currentStats[StatType.Stamina] = maxStaminaValue * respawnPercent;
+            
+            // 设置isDead为false
             isDead = false;
+            
+            // 设置新位置
+            transform.position = spawnPosition;
+            
+            // 强制同步Transform
+            if (GetComponent<Rigidbody2D>() != null)
+            {
+                Physics2D.SyncTransforms();
+            }
+            
+            Debug.Log($"[AIStats] Position after setting: {transform.position}");
+            Debug.Log($"[AIStats] Respawned with Health: {currentStats[StatType.Health]}, IsDead: {isDead}");
             
             // 根据死亡原因应用惩罚
             if (applyPenalties)
             {
                 // 这里预留给背包系统处理物品清空逻辑
             }
-            
-            // 恢复部分状态
-            float respawnPercent = config.respawnStatPercentage;
-            currentStats[StatType.Health] = config.maxHealth * respawnPercent;
-            currentStats[StatType.Hunger] = config.maxHunger * respawnPercent;
-            currentStats[StatType.Thirst] = config.maxThirst * respawnPercent;
-            currentStats[StatType.Stamina] = config.maxStamina * respawnPercent;
             
             timeSinceSpawn = 0f;
             OnRespawn?.Invoke();

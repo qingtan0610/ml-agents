@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      80_pancakes_dish_0: 2120460299499967371
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

@@ -494,6 +494,15 @@ namespace Rooms
         }
         
         /// <summary>
+        /// 获取出生点的世界坐标
+        /// </summary>
+        public Vector3 GetSpawnPosition()
+        {
+            // 出生房间在(8,8)，每个房间16单位
+            return new Vector3(spawnRoomPosition.x * roomSize, spawnRoomPosition.y * roomSize, 0);
+        }
+        
+        /// <summary>
         /// 找到距离最远的空位置
         /// </summary>
         private Vector2Int FindFarthestEmptyPosition(RoomType[,] layout, Vector2Int from)

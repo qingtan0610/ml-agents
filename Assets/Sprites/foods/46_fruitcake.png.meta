@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      46_fruitcake_0: 4560722968582747685
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

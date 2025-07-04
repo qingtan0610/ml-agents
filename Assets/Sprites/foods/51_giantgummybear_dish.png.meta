@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      51_giantgummybear_dish_0: -7889472320551287162
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

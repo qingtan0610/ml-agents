@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      67_macncheese_0: 8178891613164581907
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

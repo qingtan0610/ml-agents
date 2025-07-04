@@ -89,15 +89,25 @@ namespace Player
         {
             movement = Vector2.zero;
             velocity = Vector2.zero;
+            velocitySmooth = Vector2.zero; // 重置平滑变量
             if (rb != null)
             {
                 rb.velocity = Vector2.zero;
+                rb.angularVelocity = 0f;
             }
         }
         
         private void FixedUpdate()
         {
-            if (IsDead) return;
+            if (IsDead) 
+            {
+                // 死亡时确保不会有任何移动
+                if (rb != null && rb.velocity.magnitude > 0.01f)
+                {
+                    rb.velocity = Vector2.zero;
+                }
+                return;
+            }
             
             HandleMovement();
         }
@@ -275,8 +285,13 @@ namespace Player
         
         public void Die()
         {
-            Debug.Log("Player died!");
+            Debug.Log("[PlayerController2D] Die() called");
             StopMovement();
+            
+            // 重置所有运动相关变量
+            movement = Vector2.zero;
+            velocity = Vector2.zero;
+            velocitySmooth = Vector2.zero;
             
             // 确保刚体完全停止
             if (rb != null)
@@ -284,6 +299,30 @@ namespace Player
                 rb.velocity = Vector2.zero;
                 rb.angularVelocity = 0f;
                 rb.constraints = RigidbodyConstraints2D.FreezeAll;  // 冻结所有运动
+            }
+            
+            // 禁用控制但不禁用整个组件，这样其他组件仍能工作
+            // enabled = false; // 不要禁用，否则会阻止其他组件工作
+        }
+        
+        public void Respawn()
+        {
+            Debug.Log("[PlayerController2D] Respawn() called");
+            
+            // 重置运动状态
+            StopMovement();
+            
+            // 重置所有运动变量
+            movement = Vector2.zero;
+            velocity = Vector2.zero;
+            velocitySmooth = Vector2.zero;
+            
+            // 解冻刚体
+            if (rb != null)
+            {
+                rb.velocity = Vector2.zero;
+                rb.angularVelocity = 0f;
+                rb.constraints = RigidbodyConstraints2D.FreezeRotation;  // 只冻结旋转
             }
         }
         

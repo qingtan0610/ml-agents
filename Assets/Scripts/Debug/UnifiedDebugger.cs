@@ -4,8 +4,9 @@ using AI.Stats;
 using Inventory;
 using Inventory.Items;
 using Inventory.Managers;
+using Debug = UnityEngine.Debug;
 
-namespace Debugging
+namespace PlayerDebug
 {
     /// <summary>
     /// 统一的调试系统，合并AI属性和背包调试功能
@@ -103,9 +104,57 @@ namespace Debugging
             }
             
             // R - 复活（如果死亡）
-            if (Input.GetKeyDown(KeyCode.R) && aiStats != null && aiStats.IsDead)
+            if (Input.GetKeyDown(KeyCode.R) && aiStats != null)
             {
-                aiStats.Respawn(transform.position);
+                if (aiStats.IsDead)
+                {
+                    Debug.Log("[UnifiedDebugger] Attempting respawn through debugger");
+                    // 找到地图生成器获取出生点
+                    var mapGen = FindObjectOfType<Rooms.MapGenerator>();
+                    Vector3 spawnPos = mapGen != null ? mapGen.GetSpawnPosition() : new Vector3(128, 128, 0);
+                    
+                    // 先移动位置
+                    transform.position = spawnPos;
+                    // 再执行复活
+                    aiStats.Respawn(spawnPos);
+                    
+                    // 确保相机跟随
+                    if (Camera.main != null)
+                    {
+                        Camera.main.transform.position = new Vector3(spawnPos.x, spawnPos.y, Camera.main.transform.position.z);
+                    }
+                }
+                else
+                {
+                    Debug.Log("[UnifiedDebugger] R pressed but player not dead");
+                }
+            }
+            
+            // K - 强制杀死玩家（测试死亡）
+            if (Input.GetKeyDown(KeyCode.K) && aiStats != null && !aiStats.IsDead)
+            {
+                Debug.Log("[UnifiedDebugger] Force killing player for testing");
+                Debug.Log($"[UnifiedDebugger] Before kill - Health: {aiStats.GetStat(StatType.Health)}, IsDead: {aiStats.IsDead}");
+                
+                aiStats.ModifyStat(StatType.Health, -1000f, StatChangeReason.Combat);
+                
+                // 立即检查结果
+                Debug.Log($"[UnifiedDebugger] After kill - Health: {aiStats.GetStat(StatType.Health)}, IsDead: {aiStats.IsDead}");
+            }
+            
+            // 数字键1-9 - 使用对应槽位的物品
+            for (int i = 0; i < 9; i++)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha1 + i))
+                {
+                    UseItemInSlot(i);
+                }
+            }
+            
+            // 数字键0 - 使用第10个槽位的物品
+            if (Input.GetKeyDown(KeyCode.Alpha0))
+            {
+                UseItemInSlot(9);
             }
         }
         
@@ -185,7 +234,8 @@ namespace Debugging
             sb.AppendLine("--- Hotkeys ---");
             sb.AppendLine("H:Damage J:Heal I:Items");
             sb.AppendLine("G:Gold B:Ammo R:Respawn");
-            sb.AppendLine("1-5:Hotbar TAB:Inventory");
+            sb.AppendLine("K:Kill(Test) F9:DeathDebug");
+            sb.AppendLine("1-0:Hotbar TAB:Inventory");
             
             return sb.ToString();
         }
@@ -204,6 +254,34 @@ namespace Debugging
                 }
             }
             return used;
+        }
+        
+        /// <summary>
+        /// 使用指定槽位的物品
+        /// </summary>
+        private void UseItemInSlot(int slotIndex)
+        {
+            if (inventory == null || slotIndex < 0 || slotIndex >= inventory.Size)
+                return;
+                
+            var slot = inventory.GetSlot(slotIndex);
+            if (slot == null || slot.IsEmpty)
+            {
+                UnityEngine.Debug.Log($"[UnifiedDebugger] Slot {slotIndex + 1} is empty");
+                return;
+            }
+            
+            var item = slot.Item;
+            
+            // 使用物品 - 直接调用Inventory的UseItem方法
+            UnityEngine.Debug.Log($"[UnifiedDebugger] Using item in slot {slotIndex + 1}: {item.ItemName}");
+            
+            bool success = inventory.UseItem(slotIndex);
+            
+            if (!success)
+            {
+                UnityEngine.Debug.Log($"[UnifiedDebugger] Failed to use item: {item.ItemName}");
+            }
         }
         
         private void OnDestroy()

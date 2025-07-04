@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      64_lemonpie_dish_0: -2336984427158002131
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

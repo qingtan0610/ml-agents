@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      102_waffle_dish_0: -7092821846563598694
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

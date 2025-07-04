@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      57_icecream_0: 1071802224744195977
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

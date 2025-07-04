@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      81_pizza_0: -3594556399667252855
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

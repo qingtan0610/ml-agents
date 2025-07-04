@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      84_popcorn_bowl_0: 4674712274511618421
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

@@ -1,7 +1,8 @@
 using UnityEngine;
 using Interactables;
+using Debug = UnityEngine.Debug;
 
-namespace Debugging
+namespace PlayerDebug
 {
     /// <summary>
     /// 交互系统调试工具

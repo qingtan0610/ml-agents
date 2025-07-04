@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      37_dumplings_dish_0: 737936952141048393
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

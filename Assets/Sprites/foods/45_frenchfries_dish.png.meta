@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      45_frenchfries_dish_0: 3052366912710038843
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

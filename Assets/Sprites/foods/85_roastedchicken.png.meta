@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      85_roastedchicken_0: -7597172202376348953
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

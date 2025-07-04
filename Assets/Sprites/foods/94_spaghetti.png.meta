@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      94_spaghetti_0: 3641020774568724472
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

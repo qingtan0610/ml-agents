@@ -130,7 +130,8 @@ TextureImporter:
     edges: []
     weights: []
     secondaryTextures: []
-    nameFileIdTable: {}
+    nameFileIdTable:
+      62_jam_dish_0: 4443778930356720104
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 
