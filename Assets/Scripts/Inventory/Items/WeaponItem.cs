@@ -78,6 +78,33 @@ namespace Inventory.Items
         public bool IsAreaOfEffect => effectRadius > 0f;
         public bool IsRangedWeapon => weaponType == WeaponType.Ranged || weaponType == WeaponType.Magic;
         
+        /// <summary>
+        /// 获取包含升级信息的武器名称
+        /// </summary>
+        public string GetDisplayName()
+        {
+            #if UNITY_EDITOR || UNITY_STANDALONE
+            // 在编辑器和游戏中，尝试获取升级信息
+            try
+            {
+                var upgradeManager = NPC.Managers.WeaponUpgradeManager.Instance;
+                if (upgradeManager != null)
+                {
+                    var upgradeData = upgradeManager.GetUpgradeData(this);
+                    if (upgradeData != null && upgradeData.upgradeLevel > 0)
+                    {
+                        return $"{itemName} +{upgradeData.upgradeLevel}";
+                    }
+                }
+            }
+            catch
+            {
+                // 如果WeaponUpgradeManager不可用，返回原名称
+            }
+            #endif
+            return itemName;
+        }
+        
         // IEquipable implementation
         public EquipmentSlot Slot => EquipmentSlot.MainHand;
         

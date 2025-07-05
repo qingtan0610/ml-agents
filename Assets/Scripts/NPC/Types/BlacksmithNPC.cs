@@ -31,19 +31,22 @@ namespace NPC.Types
             }
         }
         
-        protected override void Start()
-        {
-            base.Start();
-            
-            // 确保有升级选项
-            if (blacksmithData != null && (blacksmithData.upgradeOptions == null || blacksmithData.upgradeOptions.Count == 0))
-            {
-                CreateDefaultUpgradeOptions();
-            }
-        }
         
         protected override void OnInteractionStarted(GameObject interactor)
         {
+            // 确保有默认数据
+            if (blacksmithData != null)
+            {
+                if (blacksmithData.recipes == null || blacksmithData.recipes.Count == 0)
+                {
+                    CreateDefaultRecipes();
+                }
+                if (blacksmithData.upgradeOptions == null || blacksmithData.upgradeOptions.Count == 0)
+                {
+                    CreateDefaultUpgradeOptions();
+                }
+            }
+            
             OpenCraftingMenu(interactor);
         }
         
@@ -271,6 +274,11 @@ namespace NPC.Types
             
             if (blacksmithData.recipes == null || blacksmithData.recipes.Count == 0)
             {
+                CreateDefaultRecipes();
+            }
+            
+            if (blacksmithData.recipes.Count == 0)
+            {
                 Debug.Log("抱歉，我这里没有可用的打造配方。");
             }
             else
@@ -306,7 +314,7 @@ namespace NPC.Types
                 {
                     var upgradeManager = WeaponUpgradeManager.Instance;
                     int currentLevel = upgradeManager.GetWeaponUpgradeLevel(equippedWeapon);
-                    Debug.Log($"当前装备: {equippedWeapon.ItemName} +{currentLevel}");
+                    Debug.Log($"当前装备: {equippedWeapon.GetDisplayName()}");
                     
                     if (currentLevel >= blacksmithData.maxUpgradeLevel)
                     {
@@ -359,7 +367,7 @@ namespace NPC.Types
             // 如果没有配置升级选项，创建默认的
             if (blacksmithData.upgradeOptions == null || blacksmithData.upgradeOptions.Count == 0)
             {
-                return CreateDefaultUpgrade(currentLevel);
+                CreateDefaultUpgradeOptions();
             }
             
             return blacksmithData.upgradeOptions.Find(u => 
@@ -385,6 +393,18 @@ namespace NPC.Types
                 baseSuccessRate = 0.8f,
                 requiredMaterials = new System.Collections.Generic.List<NPC.Data.CraftingMaterial>()
             });
+        }
+        
+        private void CreateDefaultRecipes()
+        {
+            if (blacksmithData.recipes == null)
+            {
+                blacksmithData.recipes = new System.Collections.Generic.List<CraftingRecipe>();
+            }
+            
+            // 注意：这里创建的是空配方，因为我们没有武器的引用
+            // 实际使用时应该在Unity编辑器中配置完整的配方数据
+            Debug.LogWarning($"[BlacksmithNPC] No recipes configured for {blacksmithData.npcName}. Please configure recipes in the NPCData asset.");
         }
         
         private WeaponUpgrade CreateDefaultUpgrade(int currentLevel)

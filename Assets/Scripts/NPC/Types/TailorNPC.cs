@@ -29,19 +29,18 @@ namespace NPC.Types
             }
         }
         
-        protected override void Start()
-        {
-            base.Start();
-            
-            // 确保有升级选项
-            if (tailorData != null && (tailorData.bagUpgrades == null || tailorData.bagUpgrades.Count == 0))
-            {
-                CreateDefaultBagUpgrades();
-            }
-        }
         
         protected override void OnInteractionStarted(GameObject interactor)
         {
+            // 确保有默认数据
+            if (tailorData != null)
+            {
+                if (tailorData.bagUpgrades == null || tailorData.bagUpgrades.Count == 0)
+                {
+                    CreateDefaultBagUpgrades();
+                }
+            }
+            
             ExamineBag(interactor);
         }
         
@@ -84,7 +83,7 @@ namespace NPC.Types
             
             if (inventory == null || currencyManager == null) return false;
             
-            // 检查当前背包容量
+            // 检查当前背包容量是否符合升级要求
             int currentSlots = inventory.GetMaxSlots();
             if (currentSlots < upgrade.requiredCurrentSlots || currentSlots >= upgrade.maxSlots)
                 return false;
