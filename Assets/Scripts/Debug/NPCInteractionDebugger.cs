@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Text;
 using System.Linq;
+using NPC;
 using NPC.Core;
 using NPC.Types;
 using NPC.Data;
@@ -1831,19 +1832,27 @@ namespace PlayerDebug
             sb.AppendLine();
             
             Debug.Log($"[NPCDebugger] GetNPCOverviewInfo - currentNPC type: {currentNPC.GetType().Name}");
-            
-            // 显示NPC具体信息
-            if (currentNPC is MerchantNPC merchant)
+            if (currentNPC.Data != null)
             {
-                Debug.Log($"[NPCDebugger] Found MerchantNPC, checking data...");
-                var merchantData = merchant.Data as MerchantData;
-                Debug.Log($"[NPCDebugger] MerchantData: {merchantData != null}, Shop: {merchantData?.shopInventory != null}, Items: {merchantData?.shopInventory?.items?.Count ?? 0}");
-                
-                if (merchantData?.shopInventory?.items != null && merchantData.shopInventory.items.Count > 0)
+                Debug.Log($"[NPCDebugger] NPC Data type: {currentNPC.Data.npcType}");
+            }
+            
+            // 显示NPC具体信息 - 根据NPC数据类型而不是组件类型判断
+            if (currentNPC.Data != null && currentNPC.Data.npcType == NPCType.Merchant)
+            {
+                Debug.Log($"[NPCDebugger] Processing as Merchant based on Data.npcType");
+                var merchant = currentNPC as MerchantNPC;
+                if (merchant != null)
                 {
-                    sb.AppendLine("=== SHOP INVENTORY ===");
-                    float priceMultiplier = merchant.GetPriceMultiplier();
-                    sb.AppendLine($"Price Multiplier: {priceMultiplier:F2}x");
+                    Debug.Log($"[NPCDebugger] Found MerchantNPC, checking data...");
+                    var merchantData = merchant.Data as MerchantData;
+                    Debug.Log($"[NPCDebugger] MerchantData: {merchantData != null}, Shop: {merchantData?.shopInventory != null}, Items: {merchantData?.shopInventory?.items?.Count ?? 0}");
+                    
+                    if (merchantData?.shopInventory?.items != null && merchantData.shopInventory.items.Count > 0)
+                    {
+                        sb.AppendLine("=== SHOP INVENTORY ===");
+                        float priceMultiplier = merchant.GetPriceMultiplier();
+                        sb.AppendLine($"Price Multiplier: {priceMultiplier:F2}x");
                     
                     for (int i = 0; i < merchantData.shopInventory.items.Count && i < 5; i++)
                     {
@@ -1860,17 +1869,22 @@ namespace PlayerDebug
                     {
                         sb.AppendLine($"... and {merchantData.shopInventory.items.Count - 5} more items");
                     }
-                }
-                else
-                {
-                    sb.AppendLine("=== SHOP ===");
-                    sb.AppendLine("No items in stock");
+                    }
+                    else
+                    {
+                        sb.AppendLine("=== SHOP ===");
+                        sb.AppendLine("No items in stock");
+                    }
                 }
             }
-            else if (currentNPC is DoctorNPC doctor)
+            else if (currentNPC.Data != null && currentNPC.Data.npcType == NPCType.Doctor)
             {
-                Debug.Log($"[NPCDebugger] Found DoctorNPC, checking data...");
-                var doctorData = doctor.Data as DoctorData;
+                Debug.Log($"[NPCDebugger] Processing as Doctor based on Data.npcType");
+                var doctor = currentNPC as DoctorNPC;
+                if (doctor != null)
+                {
+                    Debug.Log($"[NPCDebugger] Found DoctorNPC, checking data...");
+                    var doctorData = doctor.Data as DoctorData;
                 Debug.Log($"[NPCDebugger] DoctorData: {doctorData != null}, Services: {doctorData?.services?.Count ?? 0}, MedicineShop: {doctorData?.medicineShop?.items?.Count ?? 0}");
                 
                 if (doctorData != null)
@@ -1918,12 +1932,17 @@ namespace PlayerDebug
                         sb.AppendLine("No medicines in stock");
                     }
                 }
+                }
             }
-            else if (currentNPC is RestaurantNPC restaurant)
+            else if (currentNPC.Data != null && currentNPC.Data.npcType == NPCType.Restaurant)
             {
-                var restaurantData = restaurant.Data as RestaurantData;
-                if (restaurantData != null)
+                Debug.Log($"[NPCDebugger] Processing as Restaurant based on Data.npcType");
+                var restaurant = currentNPC as RestaurantNPC;
+                if (restaurant != null)
                 {
+                    var restaurantData = restaurant.Data as RestaurantData;
+                    if (restaurantData != null)
+                    {
                     sb.AppendLine("=== RESTAURANT MENU ===");
                     if (restaurantData.provideFreeWater)
                     {
@@ -1942,13 +1961,18 @@ namespace PlayerDebug
                             sb.AppendLine($"... and {restaurantData.menu.Count - 4} more dishes");
                         }
                     }
+                    }
                 }
             }
-            else if (currentNPC is BlacksmithNPC blacksmith)
+            else if (currentNPC.Data != null && currentNPC.Data.npcType == NPCType.Blacksmith)
             {
-                var blacksmithData = blacksmith.Data as BlacksmithData;
-                if (blacksmithData != null)
+                Debug.Log($"[NPCDebugger] Processing as Blacksmith based on Data.npcType");
+                var blacksmith = currentNPC as BlacksmithNPC;
+                if (blacksmith != null)
                 {
+                    var blacksmithData = blacksmith.Data as BlacksmithData;
+                    if (blacksmithData != null)
+                    {
                     sb.AppendLine("=== BLACKSMITH SERVICES ===");
                     sb.AppendLine("• Weapon Crafting");
                     sb.AppendLine("• Weapon Upgrade");
@@ -1967,13 +1991,18 @@ namespace PlayerDebug
                             sb.AppendLine($"... and {blacksmithData.recipes.Count - 3} more recipes");
                         }
                     }
+                    }
                 }
             }
-            else if (currentNPC is TailorNPC tailor)
+            else if (currentNPC.Data != null && currentNPC.Data.npcType == NPCType.Tailor)
             {
-                var tailorData = tailor.Data as TailorData;
-                if (tailorData != null)
+                Debug.Log($"[NPCDebugger] Processing as Tailor based on Data.npcType");
+                var tailor = currentNPC as TailorNPC;
+                if (tailor != null)
                 {
+                    var tailorData = tailor.Data as TailorData;
+                    if (tailorData != null)
+                    {
                     sb.AppendLine("=== TAILOR SERVICES ===");
                     sb.AppendLine("• Bag Expansion");
                     
@@ -1996,6 +2025,7 @@ namespace PlayerDebug
                         {
                             sb.AppendLine("Max capacity reached or no upgrades available");
                         }
+                    }
                     }
                 }
             }

@@ -151,6 +151,18 @@ namespace Player
             else
             {
                 float currentSpeed = isSprinting ? sprintSpeed : moveSpeed;
+                
+                // 体力影响移动速度：体力为0时速度减半
+                if (aiStats != null)
+                {
+                    float stamina = aiStats.GetStat(StatType.Stamina);
+                    if (stamina <= 0f)
+                    {
+                        currentSpeed *= 0.5f; // 体力为0时速度减半
+                        Debug.Log($"[Player] Low stamina! Speed reduced to {currentSpeed}");
+                    }
+                }
+                
                 velocity = Vector2.SmoothDamp(velocity, movement * currentSpeed, ref velocitySmooth, smoothTime);
             }
             

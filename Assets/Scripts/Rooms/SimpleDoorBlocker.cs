@@ -93,14 +93,30 @@ namespace Rooms
                 // 开门 = 触发器（可通过），关门 = 实体（阻挡）
                 doorCollider.isTrigger = isOpen;
                 
+                // 确保碰撞器启用
+                doorCollider.enabled = true;
+                
+                // 如果关门，确保Layer正确设置
+                if (!isOpen)
+                {
+                    // 设置为Wall层（假设是第8层）
+                    if (gameObject.layer != 8)
+                    {
+                        Debug.Log($"[SimpleDoorBlocker] Setting door layer to Wall (8) for blocking");
+                        gameObject.layer = 8;
+                    }
+                }
+                
                 // 强制物理系统更新
                 Physics2D.SyncTransforms();
                 
-                Debug.Log($"[SimpleDoorBlocker] Applied state - isTrigger: {doorCollider.isTrigger}, bounds: {doorCollider.bounds}");
+                Debug.Log($"[SimpleDoorBlocker] Applied state - GameObject: {gameObject.name}, isTrigger: {doorCollider.isTrigger}, " +
+                         $"enabled: {doorCollider.enabled}, layer: {gameObject.layer} ({LayerMask.LayerToName(gameObject.layer)}), " +
+                         $"bounds: {doorCollider.bounds}");
             }
             
             // 如果有动画组件，也触发相应动画
-            if (animator != null)
+            if (animator != null && animator.runtimeAnimatorController != null)
             {
                 animator.SetTrigger(isOpen ? "Open" : "Close");
             }

@@ -41,6 +41,22 @@ namespace Inventory
             InitializeInventory();
         }
         
+        private void Start()
+        {
+            // 监听复活事件，复活时取消装备
+            var aiStats = GetComponent<AI.Stats.AIStats>();
+            if (aiStats != null)
+            {
+                aiStats.OnRespawn.AddListener(OnPlayerRespawn);
+            }
+        }
+        
+        private void OnPlayerRespawn()
+        {
+            Debug.Log("[Inventory] Player respawned, unequipping weapon");
+            UnequipWeapon();
+        }
+        
         private void InitializeInventory()
         {
             slots.Clear();
@@ -139,6 +155,14 @@ namespace Inventory
         {
             if (item == null || quantity <= 0) return false;
             
+            // 检查要移除的物品是否是当前装备的武器
+            if (item is WeaponItem weapon && equippedWeapon != null && 
+                equippedWeapon.ItemId == weapon.ItemId)
+            {
+                Debug.Log($"[Inventory] Removing equipped weapon {weapon.ItemName}, unequipping first");
+                UnequipWeapon();
+            }
+            
             int remaining = quantity;
             
             // Remove from slots containing this item
@@ -166,6 +190,14 @@ namespace Inventory
             var slot = slots[slotIndex];
             if (!slot.IsEmpty)
             {
+                // 检查要移除的物品是否是当前装备的武器
+                if (slot.Item is WeaponItem weapon && equippedWeapon != null && 
+                    equippedWeapon.ItemId == weapon.ItemId)
+                {
+                    Debug.Log($"[Inventory] Removing equipped weapon {weapon.ItemName} from slot {slotIndex}, unequipping first");
+                    UnequipWeapon();
+                }
+                
                 slot.Remove(quantity);
                 OnInventoryChanged?.Invoke(slotIndex, slot);
             }

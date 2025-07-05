@@ -20,6 +20,11 @@ namespace Rooms.Core
         [SerializeField] private List<GameObject> activeEnemies = new List<GameObject>();
         private Rooms.Data.RoomSystemConfig roomSystemConfig;
         
+        // 房间进入追踪
+        private bool hasPlayerEntered = false;  // 追踪玩家是否真正进入过房间
+        private DoorDirection lastEntryDirection = DoorDirection.North;  // 记录最后的进入方向
+        private RoomMonitor roomMonitor;  // 房间监控器
+        
         [Header("Door References")]
         [SerializeField] private Animator northDoor;
         [SerializeField] private Animator southDoor;
@@ -77,16 +82,51 @@ namespace Rooms.Core
             Enemy.Enemy2D.OnEnemyDied += HandleGlobalEnemyDeath;
             
             // 怪物房间不再在初始化时锁门，而是等玩家进入后才锁门
-            // if (roomType == RoomType.Monster && !isCleared)
-            // {
-            //     LockAllDoors();
-            // }
+            // 但要确保所有门初始都是开启状态
+            if (roomType == RoomType.Monster)
+            {
+                Debug.Log($"[Room] Monster room at {gridPosition} initialized with {activeEnemies.Count} enemies");
+                // 确保所有门初始都是开启的
+                EnsureAllDoorsOpen();
+                
+                // 设置房间监控器
+                SetupRoomMonitor();
+            }
         }
         
         private void OnDestroy()
         {
             // 取消监听全局敌人死亡事件
             Enemy.Enemy2D.OnEnemyDied -= HandleGlobalEnemyDeath;
+        }
+        
+        /// <summary>
+        /// 设置房间监控器
+        /// </summary>
+        private void SetupRoomMonitor()
+        {
+            // 获取或添加监控器组件
+            roomMonitor = GetComponent<RoomMonitor>();
+            if (roomMonitor == null)
+            {
+                roomMonitor = gameObject.AddComponent<RoomMonitor>();
+            }
+            
+            // 订阅监控器事件
+            roomMonitor.OnPlayerConfirmedEntry += HandleMonitorPlayerEntry;
+        }
+        
+        /// <summary>
+        /// 处理监控器检测到的玩家进入
+        /// </summary>
+        private void HandleMonitorPlayerEntry(GameObject player, DoorDirection entryDirection)
+        {
+            if (roomType == RoomType.Monster && !isCleared && activeEnemies.Count > 0)
+            {
+                Debug.Log($"[Room] Monitor confirmed player entry from {entryDirection}, locking doors");
+                LockDoorsExcept(entryDirection);
+                hasPlayerEntered = true;
+            }
         }
         
         /// <summary>
@@ -498,6 +538,46 @@ namespace Rooms.Core
         }
         
         /// <summary>
+        /// 确保所有激活的门都是开启的
+        /// </summary>
+        private void EnsureAllDoorsOpen()
+        {
+            if (northDoor != null && northDoor.gameObject.activeSelf)
+            {
+                var doorBlocker = northDoor.GetComponent<SimpleDoorBlocker>();
+                if (doorBlocker != null)
+                {
+                    doorBlocker.Open();
+                }
+            }
+            if (eastDoor != null && eastDoor.gameObject.activeSelf)
+            {
+                var doorBlocker = eastDoor.GetComponent<SimpleDoorBlocker>();
+                if (doorBlocker != null)
+                {
+                    doorBlocker.Open();
+                }
+            }
+            if (southDoor != null && southDoor.gameObject.activeSelf)
+            {
+                var doorBlocker = southDoor.GetComponent<SimpleDoorBlocker>();
+                if (doorBlocker != null)
+                {
+                    doorBlocker.Open();
+                }
+            }
+            if (westDoor != null && westDoor.gameObject.activeSelf)
+            {
+                var doorBlocker = westDoor.GetComponent<SimpleDoorBlocker>();
+                if (doorBlocker != null)
+                {
+                    doorBlocker.Open();
+                }
+            }
+            Debug.Log($"[Room] Ensured all doors are open in room at {gridPosition}");
+        }
+        
+        /// <summary>
         /// 设置门动画状态
         /// </summary>
         private void SetDoorState(string triggerName)
@@ -549,7 +629,35 @@ namespace Rooms.Core
         /// </summary>
         private void LockDoorsExcept(DoorDirection exceptDirection)
         {
-            Debug.Log($"[Room] Locking all doors except {exceptDirection}");
+            Debug.Log($"[Room] Locking all doors except {exceptDirection} in room at {gridPosition}");
+            
+            // 首先确保进入方向的门是开启的
+            Animator entryDoor = null;
+            switch (exceptDirection)
+            {
+                case DoorDirection.North:
+                    entryDoor = northDoor;
+                    break;
+                case DoorDirection.East:
+                    entryDoor = eastDoor;
+                    break;
+                case DoorDirection.South:
+                    entryDoor = southDoor;
+                    break;
+                case DoorDirection.West:
+                    entryDoor = westDoor;
+                    break;
+            }
+            
+            if (entryDoor != null && entryDoor.gameObject.activeSelf)
+            {
+                var entryBlocker = entryDoor.GetComponent<SimpleDoorBlocker>();
+                if (entryBlocker != null)
+                {
+                    entryBlocker.Open();
+                    Debug.Log($"[Room] Ensuring {exceptDirection} door is open");
+                }
+            }
             
             // 锁定所有门，除了指定的方向
             if (exceptDirection != DoorDirection.North && northDoor != null && northDoor.gameObject.activeSelf)
@@ -558,12 +666,22 @@ namespace Rooms.Core
                 if (doorBlocker != null)
                 {
                     doorBlocker.Close();
+                    Debug.Log($"[Room] Closed North door at position {northDoor.transform.position}");
                 }
                 else
                 {
-                    Debug.LogWarning("[Room] North door has no SimpleDoorBlocker! Add SimpleDoorBlocker component to the door prefab.");
+                    // 如果没有SimpleDoorBlocker，尝试在子对象中查找
+                    doorBlocker = northDoor.GetComponentInChildren<SimpleDoorBlocker>();
+                    if (doorBlocker != null)
+                    {
+                        doorBlocker.Close();
+                        Debug.Log($"[Room] Closed North door (found in children)");
+                    }
+                    else
+                    {
+                        Debug.LogError("[Room] North door has no SimpleDoorBlocker! Add SimpleDoorBlocker component to the door prefab.");
+                    }
                 }
-                // northDoor.SetTrigger("Close"); // 暂时没有Animator
             }
             if (exceptDirection != DoorDirection.East && eastDoor != null && eastDoor.gameObject.activeSelf)
             {
@@ -571,12 +689,21 @@ namespace Rooms.Core
                 if (doorBlocker != null)
                 {
                     doorBlocker.Close();
+                    Debug.Log($"[Room] Closed East door at position {eastDoor.transform.position}");
                 }
                 else
                 {
-                    Debug.LogWarning("[Room] East door has no SimpleDoorBlocker! Add SimpleDoorBlocker component to the door prefab.");
+                    doorBlocker = eastDoor.GetComponentInChildren<SimpleDoorBlocker>();
+                    if (doorBlocker != null)
+                    {
+                        doorBlocker.Close();
+                        Debug.Log($"[Room] Closed East door (found in children)");
+                    }
+                    else
+                    {
+                        Debug.LogError("[Room] East door has no SimpleDoorBlocker! Add SimpleDoorBlocker component to the door prefab.");
+                    }
                 }
-                // eastDoor.SetTrigger("Close"); // 暂时没有Animator
             }
             if (exceptDirection != DoorDirection.South && southDoor != null && southDoor.gameObject.activeSelf)
             {
@@ -584,12 +711,21 @@ namespace Rooms.Core
                 if (doorBlocker != null)
                 {
                     doorBlocker.Close();
+                    Debug.Log($"[Room] Closed South door at position {southDoor.transform.position}");
                 }
                 else
                 {
-                    Debug.LogWarning("[Room] South door has no SimpleDoorBlocker! Add SimpleDoorBlocker component to the door prefab.");
+                    doorBlocker = southDoor.GetComponentInChildren<SimpleDoorBlocker>();
+                    if (doorBlocker != null)
+                    {
+                        doorBlocker.Close();
+                        Debug.Log($"[Room] Closed South door (found in children)");
+                    }
+                    else
+                    {
+                        Debug.LogError("[Room] South door has no SimpleDoorBlocker! Add SimpleDoorBlocker component to the door prefab.");
+                    }
                 }
-                // southDoor.SetTrigger("Close"); // 暂时没有Animator
             }
             if (exceptDirection != DoorDirection.West && westDoor != null && westDoor.gameObject.activeSelf)
             {
@@ -597,12 +733,21 @@ namespace Rooms.Core
                 if (doorBlocker != null)
                 {
                     doorBlocker.Close();
+                    Debug.Log($"[Room] Closed West door at position {westDoor.transform.position}");
                 }
                 else
                 {
-                    Debug.LogWarning("[Room] West door has no SimpleDoorBlocker! Add SimpleDoorBlocker component to the door prefab.");
+                    doorBlocker = westDoor.GetComponentInChildren<SimpleDoorBlocker>();
+                    if (doorBlocker != null)
+                    {
+                        doorBlocker.Close();
+                        Debug.Log($"[Room] Closed West door (found in children)");
+                    }
+                    else
+                    {
+                        Debug.LogError("[Room] West door has no SimpleDoorBlocker! Add SimpleDoorBlocker component to the door prefab.");
+                    }
                 }
-                // westDoor.SetTrigger("Close"); // 暂时没有Animator
             }
         }
         
@@ -619,47 +764,37 @@ namespace Rooms.Core
         /// </summary>
         public void OnPlayerEnter(GameObject player, DoorDirection entryDirection)
         {
-            // 检查玩家是否真的在这个房间内 (房间大小16x16，所以半径约8)
-            Vector3 playerPos = player.transform.position;
-            Vector3 roomCenter = transform.position;
-            float roomHalfSize = 8f; // 房间半边长
-            
-            // 检查玩家是否在房间边界内
-            bool playerInRoom = Mathf.Abs(playerPos.x - roomCenter.x) <= roomHalfSize && 
-                               Mathf.Abs(playerPos.y - roomCenter.y) <= roomHalfSize;
-            
-            if (!playerInRoom)
-            {
-                Debug.Log($"[Room] Player at {playerPos} is outside room {gridPosition} (center: {roomCenter})");
-                return; // 玩家还没真正进入房间，不触发房间逻辑
-            }
+            // 记录进入方向
+            lastEntryDirection = entryDirection;
             
             if (!isExplored)
             {
                 isExplored = true;
             }
             
-            Debug.Log($"[Room] Player entered {roomType} room at {gridPosition} from {entryDirection}");
+            Debug.Log($"[Room] Player approaching {roomType} room at {gridPosition} from {entryDirection}");
             
-            // 如果是怪物房间且还没清理，锁定除了进入方向外的所有门
-            if (roomType == RoomType.Monster && !isCleared)
+            // 如果是怪物房间且还没锁门，立即锁门！
+            if (roomType == RoomType.Monster && !isCleared && !hasPlayerEntered)
             {
-                Debug.Log($"[Room] Monster room check - Cleared: {isCleared}, Enemy count: {activeEnemies.Count}");
+                // 清理空引用
+                activeEnemies.RemoveAll(e => e == null);
                 
-                // 如果有怪物，锁定门
                 if (activeEnemies.Count > 0)
                 {
-                    Debug.Log($"[Room] Locking doors, enemy count: {activeEnemies.Count}");
+                    Debug.Log($"[Room] Monster room detected, locking doors IMMEDIATELY except {entryDirection}");
                     LockDoorsExcept(entryDirection);
-                }
-                else
-                {
-                    Debug.LogWarning($"[Room] Monster room at {gridPosition} has no enemies! This should not happen if monsters were properly spawned during Initialize.");
-                    // 不要在这里重新生成怪物，因为Initialize已经尝试过了
-                    // 如果失败了，重复尝试也不会成功
+                    hasPlayerEntered = true;
                 }
             }
+            
+            // 如果有房间监控器，通知它记录进入方向（作为备份）
+            if (roomMonitor != null)
+            {
+                roomMonitor.RecordEntryDirection(entryDirection);
+            }
         }
+        
         
         /// <summary>
         /// 检查房间是否清理完毕
@@ -671,6 +806,15 @@ namespace Rooms.Core
             if (roomType == RoomType.Monster && activeEnemies.Count == 0 && !isCleared)
             {
                 isCleared = true;
+                hasPlayerEntered = false;  // 重置进入状态
+                
+                // 停止监控器
+                if (roomMonitor != null)
+                {
+                    roomMonitor.StopMonitoring();
+                    roomMonitor.ResetMonitor();
+                }
+                
                 OpenAllDoors();
                 OnRoomCleared?.Invoke(this);
                 Debug.Log($"[Room] Monster room at {gridPosition} cleared!");
