@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 4411098195264438614}
   - component: {fileID: 3479620730996643072}
   - component: {fileID: 9214576676881755697}
-  - component: {fileID: 5606029237323684495}
+  - component: {fileID: -4429731949912594560}
   m_Layer: 13
   m_Name: NPC_Restaurant
   m_TagString: NPC
@@ -124,7 +124,7 @@ CircleCollider2D:
   m_CompositeOrder: 0
   m_Offset: {x: 0, y: 0}
   m_Radius: 0.5
---- !u!114 &5606029237323684495
+--- !u!114 &-4429731949912594560
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -133,14 +133,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 8978312837343609469}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c20fdb4b4db44cd419459412ed1007ef, type: 3}
+  m_Script: {fileID: 11500000, guid: 966798cb96de7694780abd22ba33d48f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  npcData: {fileID: 11400000, guid: bb214c97947864b4c8a482ea39f9da34, type: 2}
+  npcData: {fileID: 0}
   currentInteractor: {fileID: 0}
   isInteracting: 0
   lastInteractionTime: 0
   spriteRenderer: {fileID: 0}
   interactionPrompt: {fileID: 0}
   promptOffset: 1.5
-  shopUIPrefab: {fileID: 0}
+  menuUIPrefab: {fileID: 0}

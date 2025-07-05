@@ -69,6 +69,7 @@ namespace Inventory.Items
         public int MaxPierceTargets => maxPierceTargets;
         public GameObject WeaponModelPrefab => weaponModelPrefab;
         public GameObject ProjectilePrefab => projectilePrefab;
+        public GameObject HitEffectPrefab => hitEffectPrefab;
         public List<BuffBase> OnHitDebuffs => onHitDebuffs;
         public float DebuffChance => debuffChance;
         public bool DebuffRequiresCrit => debuffRequiresCrit;

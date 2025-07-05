@@ -31,11 +31,11 @@ MonoBehaviour:
   farewellSound: {fileID: 0}
   shopInventory:
     items:
-    - item: {fileID: 11400000, guid: ac0b00f7c11b5d247b76ea72bd08e2d0, type: 2}
-      stock: 2
-      restockAmount: 0
+    - item: {fileID: 11400000, guid: 907b8d8080936d8438e8831a3388c5c4, type: 2}
+      stock: 0
+      restockAmount: 5
       priceOverride: 0
-      isDailyDeal: 0
+      isDailyDeal: 1
   buyPriceMultiplier: 1
   sellPriceMultiplier: 0.5
   hasDailyDeals: 1

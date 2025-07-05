@@ -128,6 +128,15 @@ namespace Combat
                 return;
             }
             
+            // 检查是否应该使用形状攻击
+            // 魔法武器且攻击形状不是直线时，使用形状攻击而非弹药
+            if (weapon.WeaponType == WeaponType.Magic && weapon.AttackShape != AttackShape.Line)
+            {
+                // 魔法武器使用形状攻击（类似近战但范围更远）
+                PerformShapeAttack(weapon);
+                return;
+            }
+            
             // 创建2D弹药
             if (weapon.ProjectilePrefab != null)
             {
@@ -180,6 +189,67 @@ namespace Combat
                 {
                     ApplyDamageToTarget(hit.collider.gameObject, damage, weapon.Knockback, critChance);
                 }
+            }
+        }
+        
+        private void PerformShapeAttack(WeaponItem weapon)
+        {
+            Debug.Log($"[Combat] Performing shape attack with {weapon.ItemName} - Shape: {weapon.AttackShape}, Range: {weapon.AttackRange}");
+            
+            var upgradeManager = NPC.Managers.WeaponUpgradeManager.Instance;
+            float damage = upgradeManager.GetUpgradedDamage(weapon);
+            float range = upgradeManager.GetUpgradedAttackRange(weapon);
+            float critChance = upgradeManager.GetUpgradedCritChance(weapon);
+            
+            // 获取形状内的目标
+            List<GameObject> targets = GetTargetsInShape2D(
+                transform.position,
+                transform.up,
+                range,
+                weapon.AttackShape,
+                weapon.SectorAngle,
+                weapon.RectangleWidth
+            );
+            
+            Debug.Log($"[Combat] Shape attack found {targets.Count} targets");
+            
+            // 对每个目标造成伤害
+            foreach (var target in targets)
+            {
+                ApplyDamageToTarget(target, damage, weapon.Knockback, critChance);
+                
+                // 如果武器有范围效果，在目标位置应用范围伤害
+                if (weapon.EffectRadius > 0)
+                {
+                    ApplyAreaDamageAtPosition(target.transform.position, damage, weapon.EffectRadius, critChance);
+                }
+            }
+            
+            // 播放攻击特效
+            if (weapon.HitEffectPrefab != null && targets.Count > 0)
+            {
+                foreach (var target in targets)
+                {
+                    Instantiate(weapon.HitEffectPrefab, target.transform.position, Quaternion.identity);
+                }
+            }
+            
+            Debug.Log($"Shape attack ({weapon.AttackShape}) hit {targets.Count} targets");
+        }
+        
+        private void ApplyAreaDamageAtPosition(Vector2 position, float damage, float radius, float critChance)
+        {
+            Collider2D[] colliders = Physics2D.OverlapCircleAll(position, radius, targetLayers);
+            
+            foreach (var collider in colliders)
+            {
+                if (collider.gameObject == gameObject) continue;
+                
+                float distance = Vector2.Distance(position, collider.transform.position);
+                float falloff = 1f - (distance / radius);
+                float areaDamage = damage * falloff * 0.5f; // 范围伤害为原始伤害的50%
+                
+                ApplyDamageToTarget(collider.gameObject, areaDamage, 0f, critChance * 0.5f);
             }
         }
         

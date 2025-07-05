@@ -30,13 +30,13 @@ MonoBehaviour:
   interactionSound: {fileID: 0}
   farewellSound: {fileID: 0}
   menu:
-  - itemName: apple
-    description: 
-    foodIcon: {fileID: 10913, guid: 0000000000000000f000000000000000, type: 0}
-    hungerRestore: 0
+  - itemName: apple_pie
+    description: "\u82F9\u679C\u6D3E"
+    foodIcon: {fileID: -3188074485087870156, guid: 901c9588fb734134997a5fdbe7768c2c, type: 3}
+    hungerRestore: 100
     thirstRestore: 0
-    healthRestore: 0
-    staminaRestore: 0
+    healthRestore: 30
+    staminaRestore: 50
     hasBuffEffect: 0
     buffData:
       buffName: 

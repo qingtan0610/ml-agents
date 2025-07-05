@@ -29,7 +29,17 @@ MonoBehaviour:
   greetingSound: {fileID: 0}
   interactionSound: {fileID: 0}
   farewellSound: {fileID: 0}
-  bagUpgrades: []
+  bagUpgrades:
+  - upgradeName: up to 20
+    description: up to 20
+    slotsToAdd: 10
+    requiredCurrentSlots: 0
+    maxSlots: 0
+    requiredMaterials: []
+    upgradeFee: 100
+    upgradeIcon: {fileID: 0}
+    upgradeAnimation: 0
+    upgradeDuration: 0
   canRepairArmor: 1
   canDyeClothes: 1
   upgradePriceMultiplier: 1.5

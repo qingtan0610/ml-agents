@@ -29,9 +29,28 @@ MonoBehaviour:
   greetingSound: {fileID: 0}
   interactionSound: {fileID: 0}
   farewellSound: {fileID: 0}
-  services: []
+  services:
+  - serviceName: "\u6062\u590D"
+    description: "\u6062\u590D"
+    healthRestore: 100
+    fullHeal: 0
+    curePoison: 0
+    cureDisease: 0
+    providesImmunity: 0
+    immunityType: 0
+    immunityDuration: 0
+    basePrice: 50
+    priceBasedOnMissingHealth: 0
+    minPlayerLevel: 0
+    requiresItem: 0
+    requiredItem: {fileID: 0}
   medicineShop:
-    items: []
+    items:
+    - item: {fileID: 11400000, guid: 92529d71f5efb6745bf1bd542c772fa1, type: 2}
+      stock: 5
+      restockAmount: 5
+      priceOverride: 0
+      isDailyDeal: 1
   servicePriceMultiplier: 1
   medicinePriceMultiplier: 1.2
   providesEmergencyCare: 1

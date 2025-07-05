@@ -29,7 +29,9 @@ namespace NPC.Core
         /// <summary>
         /// 设置NPC数据（用于运行时设置）
         /// </summary>
-        public void SetNPCData(NPCData data)
+        /// <param name="data">要设置的NPC数据</param>
+        /// <param name="forceOverwrite">是否强制覆盖已有数据</param>
+        public void SetNPCData(NPCData data, bool forceOverwrite = false)
         {
             if (data == null)
             {
@@ -44,15 +46,27 @@ namespace NPC.Core
                 return;
             }
             
-            // 如果预制体有不同的npcData，优先使用预制体的设置（除非强制覆盖）
-            if (npcData != null)
+            // 如果预制体有不同的npcData，并且不是强制覆盖，优先使用预制体的设置
+            if (npcData != null && !forceOverwrite)
             {
-                Debug.LogWarning($"[NPCBase] {name} already has NPC data ({npcData.npcName}), keeping existing data instead of setting {data.npcName}");
+                Debug.LogWarning($"[NPCBase] {name} already has NPC data ({npcData.npcName}), keeping existing data instead of setting {data.npcName}. Use forceOverwrite=true to override.");
                 return;
+            }
+            
+            // 如果是强制覆盖，记录日志
+            if (npcData != null && forceOverwrite)
+            {
+                Debug.Log($"[NPCBase] Force overwriting NPC data on {name} from {npcData.npcName} to {data.npcName}");
             }
             
             npcData = data;
             Debug.Log($"[NPCBase] Set NPC data on {name} to {data.npcName} ({data.npcType}), Data file: {data.name}");
+            
+            // 确保组件已设置
+            if (spriteRenderer == null)
+            {
+                SetupComponents();
+            }
             
             // 更新视觉效果
             SetupVisuals();
@@ -61,7 +75,8 @@ namespace NPC.Core
         protected virtual void Awake()
         {
             SetupComponents();
-            SetupVisuals();
+            // 不在Awake中调用SetupVisuals，因为此时npcData可能还没有设置
+            // SetupVisuals会在SetNPCData中被调用
         }
         
         protected virtual void Start()
@@ -106,10 +121,21 @@ namespace NPC.Core
         
         protected virtual void SetupVisuals()
         {
-            if (npcData != null && spriteRenderer != null)
+            if (spriteRenderer != null)
             {
-                spriteRenderer.sprite = npcData.npcSprite;
-                spriteRenderer.color = npcData.npcColor;
+                // 确保SpriteRenderer在正确的排序层
+                spriteRenderer.sortingLayerName = "Default";
+                spriteRenderer.sortingOrder = 10;
+                
+                // 只有当npcData有sprite时才覆盖，否则保持预制体中的设置
+                if (npcData != null)
+                {
+                    if (npcData.npcSprite != null)
+                    {
+                        spriteRenderer.sprite = npcData.npcSprite;
+                    }
+                    spriteRenderer.color = npcData.npcColor;
+                }
             }
         }
         

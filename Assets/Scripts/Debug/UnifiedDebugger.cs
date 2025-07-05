@@ -4,6 +4,8 @@ using AI.Stats;
 using Inventory;
 using Inventory.Items;
 using Inventory.Managers;
+using NPC.Core;
+using System.Linq;
 using Debug = UnityEngine.Debug;
 
 namespace PlayerDebug
@@ -279,6 +281,7 @@ namespace PlayerDebug
             sb.AppendLine("H:Damage J:Heal I:Items");
             sb.AppendLine("M:Gold B:Ammo G:+100Gold R:Respawn");
             sb.AppendLine("K:Kill(Test) T:Hunger Death");
+            sb.AppendLine("F5:NPC诊断 F6:附近NPC");
             sb.AppendLine("1-0:Hotbar Mouse:Attack(with visual)");
             
             return sb.ToString();
@@ -335,6 +338,64 @@ namespace PlayerDebug
             
             yield return new WaitForSeconds(0.1f); // 再等一小段时间
             Debug.Log($"[UnifiedDebugger] After 0.1s - Hunger: {aiStats.GetStat(StatType.Hunger)} (display), {aiStats.GetRawStat(StatType.Hunger)} (raw), IsDead: {aiStats.IsDead}");
+        }
+        
+        /// <summary>
+        /// 诊断所有NPC状态
+        /// </summary>
+        private void DiagnoseAllNPCs()
+        {
+            Debug.Log("=== NPC诊断开始 ===");
+            
+            var allNPCs = FindObjectsOfType<NPCBase>();
+            Debug.Log($"场景中找到 {allNPCs.Length} 个NPC");
+            
+            foreach (var npc in allNPCs)
+            {
+                var spriteRenderer = npc.GetComponentInChildren<SpriteRenderer>();
+                var hasData = npc.Data != null;
+                var dataName = hasData ? npc.Data.npcName : "无数据";
+                var hasSprite = hasData && npc.Data.npcSprite != null;
+                var spriteAssigned = spriteRenderer != null && spriteRenderer.sprite != null;
+                
+                Debug.Log($"NPC: {npc.name} ({npc.GetType().Name})");
+                Debug.Log($"  - 有数据: {hasData} ({dataName})");
+                Debug.Log($"  - 有精灵: {hasSprite}");
+                Debug.Log($"  - 有渲染器: {spriteRenderer != null}");
+                Debug.Log($"  - 精灵已分配: {spriteAssigned}");
+                Debug.Log($"  - 位置: {npc.transform.position}");
+                
+                if (spriteRenderer != null)
+                {
+                    Debug.Log($"  - 激活状态: {spriteRenderer.gameObject.activeInHierarchy}");
+                    Debug.Log($"  - 颜色: {spriteRenderer.color}");
+                }
+            }
+            
+            Debug.Log("=== NPC诊断结束 ===");
+        }
+        
+        /// <summary>
+        /// 查找附近的NPC
+        /// </summary>
+        private void FindNearbyNPCs()
+        {
+            Debug.Log("=== 查找附近NPC ===");
+            
+            var allNPCs = FindObjectsOfType<NPCBase>();
+            var nearbyNPCs = allNPCs.Where(npc => 
+                Vector2.Distance(transform.position, npc.transform.position) <= 10f)
+                .OrderBy(npc => Vector2.Distance(transform.position, npc.transform.position))
+                .ToList();
+            
+            Debug.Log($"10米内找到 {nearbyNPCs.Count} 个NPC:");
+            
+            foreach (var npc in nearbyNPCs)
+            {
+                float distance = Vector2.Distance(transform.position, npc.transform.position);
+                string npcName = npc.Data?.npcName ?? "未知NPC";
+                Debug.Log($"  - {npcName} ({npc.GetType().Name}) 距离: {distance:F1}m");
+            }
         }
         
         private void OnDestroy()

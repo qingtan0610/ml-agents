@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 917449854117101224}
   - component: {fileID: 4541358246724640561}
   - component: {fileID: 8269419721637070562}
-  - component: {fileID: 6947816474604419310}
+  - component: {fileID: -1352676538339626989}
   m_Layer: 13
   m_Name: NPC_Merchant
   m_TagString: NPC
@@ -124,7 +124,7 @@ CircleCollider2D:
   m_CompositeOrder: 0
   m_Offset: {x: 0, y: 0}
   m_Radius: 0.5
---- !u!114 &6947816474604419310
+--- !u!114 &-1352676538339626989
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -136,7 +136,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c20fdb4b4db44cd419459412ed1007ef, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  npcData: {fileID: 11400000, guid: bb214c97947864b4c8a482ea39f9da34, type: 2}
+  npcData: {fileID: 0}
   currentInteractor: {fileID: 0}
   isInteracting: 0
   lastInteractionTime: 0

@@ -27,7 +27,7 @@ MonoBehaviour:
   weaponType: 0
   damage: 30
   attackSpeed: 1
-  attackRange: 5
+  attackRange: 6
   projectileSpeed: 10
   attackShape: 0
   effectRadius: 0

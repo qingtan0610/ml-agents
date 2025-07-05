@@ -104,14 +104,21 @@ namespace NPC.Core
                 return null;
             }
             
+            Debug.Log($"[NPCPool] Spawning NPC: {entry.npcData.npcName} ({entry.npcData.npcType}) at {position}");
+            
             GameObject npc = Instantiate(entry.npcPrefab, position, Quaternion.identity, parent);
             
             // 确保NPC有正确的组件
             var npcComponent = npc.GetComponent<NPCBase>();
             if (npcComponent != null)
             {
+                Debug.Log($"[NPCPool] Found NPCBase component on spawned NPC");
                 // 设置正确的NPC数据
                 SetNPCData(npcComponent, entry.npcData);
+            }
+            else
+            {
+                Debug.LogError($"[NPCPool] No NPCBase component found on spawned NPC!");
             }
             
             // 记录唯一NPC
@@ -119,6 +126,8 @@ namespace NPC.Core
             {
                 spawnedNPCIds.Add(entry.npcData.npcId);
             }
+            
+            Debug.Log($"[NPCPool] NPC spawn complete: {npc.name}");
             
             return npc;
         }
@@ -134,8 +143,8 @@ namespace NPC.Core
                 return;
             }
             
-            // 使用公开的SetNPCData方法
-            npcComponent.SetNPCData(npcData);
+            // 使用公开的SetNPCData方法，强制覆盖预制体中的数据
+            npcComponent.SetNPCData(npcData, forceOverwrite: true);
         }
         
         /// <summary>

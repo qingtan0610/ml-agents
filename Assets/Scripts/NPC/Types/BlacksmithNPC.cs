@@ -31,6 +31,17 @@ namespace NPC.Types
             }
         }
         
+        protected override void Start()
+        {
+            base.Start();
+            
+            // 确保有升级选项
+            if (blacksmithData != null && (blacksmithData.upgradeOptions == null || blacksmithData.upgradeOptions.Count == 0))
+            {
+                CreateDefaultUpgradeOptions();
+            }
+        }
+        
         protected override void OnInteractionStarted(GameObject interactor)
         {
             OpenCraftingMenu(interactor);
@@ -252,29 +263,85 @@ namespace NPC.Types
         
         private void DisplayCraftingOptions(GameObject customer)
         {
-            Debug.Log($"=== {blacksmithData.npcName}的打造服务 ===");
+            var inventory = customer.GetComponent<Inventory.Inventory>();
+            var currencyManager = customer.GetComponent<CurrencyManager>();
             
-            // 显示可打造的物品
-            Debug.Log("【可打造武器】");
-            foreach (var recipe in blacksmithData.recipes)
+            Debug.Log($"=== {blacksmithData.npcName}的打造服务 ===");
+            Debug.Log($"当前金币: {currencyManager?.CurrentGold ?? 0}");
+            
+            if (blacksmithData.recipes == null || blacksmithData.recipes.Count == 0)
             {
-                bool canCraft = CanCraft(customer, recipe.recipeName);
-                string statusText = canCraft ? "" : " [材料不足]";
-                
-                Debug.Log($"{recipe.recipeName} - {recipe.craftingFee}金币{statusText}");
-                Debug.Log($"  {recipe.description}");
-                Debug.Log($"  所需材料:");
-                foreach (var material in recipe.requiredMaterials)
+                Debug.Log("抱歉，我这里没有可用的打造配方。");
+            }
+            else
+            {
+                // 显示可打造的物品
+                Debug.Log("\n【可打造武器】");
+                foreach (var recipe in blacksmithData.recipes)
                 {
-                    Debug.Log($"    - {material.material.ItemName} x{material.amount}");
+                    bool canCraft = CanCraft(customer, recipe.recipeName);
+                    string statusText = canCraft ? " [可打造]" : " [材料不足]";
+                    
+                    Debug.Log($"{recipe.recipeName} - {recipe.craftingFee}金币{statusText}");
+                    Debug.Log($"  {recipe.description}");
+                    Debug.Log($"  制作时间: {recipe.craftingDuration}秒");
+                    Debug.Log($"  所需材料:");
+                    
+                    foreach (var material in recipe.requiredMaterials)
+                    {
+                        int owned = inventory?.GetItemCount(material.material) ?? 0;
+                        string materialStatus = owned >= material.amount ? "✓" : "✗";
+                        Debug.Log($"    {materialStatus} {material.material.ItemName} x{material.amount} (拥有:{owned})");
+                    }
+                    Debug.Log("");
                 }
             }
             
             // 显示升级服务
             if (blacksmithData.canEnhanceWeapons)
             {
-                Debug.Log("\n【武器强化】");
-                Debug.Log("将背包中的武器拿来，我可以帮你强化。");
+                Debug.Log("【武器强化】");
+                var equippedWeapon = inventory?.EquippedWeapon;
+                if (equippedWeapon != null)
+                {
+                    var upgradeManager = WeaponUpgradeManager.Instance;
+                    int currentLevel = upgradeManager.GetWeaponUpgradeLevel(equippedWeapon);
+                    Debug.Log($"当前装备: {equippedWeapon.ItemName} +{currentLevel}");
+                    
+                    if (currentLevel >= blacksmithData.maxUpgradeLevel)
+                    {
+                        Debug.Log("这把武器已经达到最高强化等级！");
+                    }
+                    else
+                    {
+                        Debug.Log($"可以强化到 +{currentLevel + 1} (最高 +{blacksmithData.maxUpgradeLevel})");
+                        
+                        // 显示强化需求（如果有可用的升级）
+                        var availableUpgrade = FindSuitableUpgrade(equippedWeapon, currentLevel);
+                        if (availableUpgrade != null)
+                        {
+                            int cost = CalculateUpgradeCost(availableUpgrade, currentLevel);
+                            float successRate = CalculateSuccessRate(availableUpgrade, currentLevel);
+                            Debug.Log($"强化费用: {cost}金币");
+                            Debug.Log($"成功率: {successRate:P0}");
+                            
+                            if (availableUpgrade.requiredMaterials.Count > 0)
+                            {
+                                Debug.Log("所需材料:");
+                                foreach (var material in availableUpgrade.requiredMaterials)
+                                {
+                                    int owned = inventory?.GetItemCount(material.material) ?? 0;
+                                    string materialStatus = owned >= material.amount ? "✓" : "✗";
+                                    Debug.Log($"  {materialStatus} {material.material.ItemName} x{material.amount} (拥有:{owned})");
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    Debug.Log("请先装备一把武器。");
+                }
             }
         }
         
@@ -287,11 +354,52 @@ namespace NPC.Types
         
         private WeaponUpgrade FindSuitableUpgrade(WeaponItem weapon, int currentLevel)
         {
-            if (blacksmithData == null || blacksmithData.upgradeOptions == null) return null;
+            if (blacksmithData == null) return null;
+            
+            // 如果没有配置升级选项，创建默认的
+            if (blacksmithData.upgradeOptions == null || blacksmithData.upgradeOptions.Count == 0)
+            {
+                return CreateDefaultUpgrade(currentLevel);
+            }
             
             return blacksmithData.upgradeOptions.Find(u => 
                 currentLevel >= u.minUpgradeLevel && 
                 currentLevel < u.maxUpgradeLevel);
+        }
+        
+        private void CreateDefaultUpgradeOptions()
+        {
+            if (blacksmithData.upgradeOptions == null)
+            {
+                blacksmithData.upgradeOptions = new System.Collections.Generic.List<WeaponUpgrade>();
+            }
+            
+            blacksmithData.upgradeOptions.Add(new WeaponUpgrade
+            {
+                upgradeName = "基础强化",
+                description = "提升武器的基础属性",
+                minUpgradeLevel = 0,
+                maxUpgradeLevel = blacksmithData.maxUpgradeLevel,
+                damageIncrease = 5f,
+                baseUpgradeFee = 100,
+                baseSuccessRate = 0.8f,
+                requiredMaterials = new System.Collections.Generic.List<NPC.Data.CraftingMaterial>()
+            });
+        }
+        
+        private WeaponUpgrade CreateDefaultUpgrade(int currentLevel)
+        {
+            return new WeaponUpgrade
+            {
+                upgradeName = $"武器强化 +{currentLevel + 1}",
+                description = "提升武器的基础属性",
+                minUpgradeLevel = 0,
+                maxUpgradeLevel = blacksmithData.maxUpgradeLevel,
+                damageIncrease = 5f,
+                baseUpgradeFee = 100,
+                baseSuccessRate = 0.8f,
+                requiredMaterials = new System.Collections.Generic.List<NPC.Data.CraftingMaterial>()
+            };
         }
         
         private bool CanAffordUpgrade(GameObject customer, WeaponUpgrade upgrade, int currentLevel)

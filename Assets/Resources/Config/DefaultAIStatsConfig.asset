@@ -12,19 +12,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8738622335518044bbc31024d819a4a8, type: 3}
   m_Name: DefaultAIStatsConfig
   m_EditorClassIdentifier: 
-  initialHealth: 100
-  initialHunger: 100
-  initialThirst: 100
-  initialStamina: 100
+  initialHealth: 1000
+  initialHunger: 1000
+  initialThirst: 1000
+  initialStamina: 1000
   initialArmor: 0
   initialToughness: 50
   initialBullets: 30
   initialArrows: 20
   initialMana: 50
-  maxHealth: 100
-  maxHunger: 100
-  maxThirst: 100
-  maxStamina: 100
+  maxHealth: 1000
+  maxHunger: 1000
+  maxThirst: 1000
+  maxStamina: 1000
   maxArmor: 100
   maxToughness: 100
   maxBullets: 999

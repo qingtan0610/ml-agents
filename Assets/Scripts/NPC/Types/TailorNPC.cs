@@ -29,6 +29,17 @@ namespace NPC.Types
             }
         }
         
+        protected override void Start()
+        {
+            base.Start();
+            
+            // 确保有升级选项
+            if (tailorData != null && (tailorData.bagUpgrades == null || tailorData.bagUpgrades.Count == 0))
+            {
+                CreateDefaultBagUpgrades();
+            }
+        }
+        
         protected override void OnInteractionStarted(GameObject interactor)
         {
             ExamineBag(interactor);
@@ -118,18 +129,8 @@ namespace NPC.Types
             int currentSlots = inventory.GetMaxSlots();
             ShowDialogue(string.Format(tailorData.currentCapacityText, currentSlots));
             
-            // 查找可用的升级选项
-            BagUpgrade availableUpgrade = FindAvailableUpgrade(inventory);
-            
-            if (availableUpgrade == null)
-            {
-                ShowDialogue(tailorData.maxCapacityText);
-            }
-            else
-            {
-                ShowDialogue(tailorData.upgradeOfferText);
-                DisplayUpgradeOptions(customer, availableUpgrade);
-            }
+            // 显示所有升级选项，让玩家看到可用的和不可用的
+            DisplayAllUpgradeOptions(customer);
         }
         
         private void PerformBagUpgrade(GameObject customer, BagUpgrade upgrade)
@@ -225,16 +226,130 @@ namespace NPC.Types
             return tailorData.bagUpgrades.Find(u => u.upgradeName == upgradeName);
         }
         
+        private void DisplayAllUpgradeOptions(GameObject customer)
+        {
+            if (tailorData == null)
+            {
+                ShowDialogue("抱歉，我这里没有背包升级服务。");
+                return;
+            }
+            
+            // 如果没有配置升级选项，创建默认的
+            if (tailorData.bagUpgrades == null || tailorData.bagUpgrades.Count == 0)
+            {
+                CreateDefaultBagUpgrades();
+            }
+            
+            var inventory = customer.GetComponent<Inventory.Inventory>();
+            var currencyManager = customer.GetComponent<CurrencyManager>();
+            int currentSlots = inventory.GetMaxSlots();
+            
+            Debug.Log($"=== {tailorData.npcName}的背包扩容服务 ===");
+            Debug.Log($"当前背包容量: {currentSlots}格");
+            Debug.Log("\n【可用升级】:");
+            
+            bool hasAvailableUpgrade = false;
+            
+            foreach (var upgrade in tailorData.bagUpgrades)
+            {
+                bool canUpgrade = currentSlots == upgrade.requiredCurrentSlots;
+                bool canAfford = CanProvideService(customer, upgrade.upgradeName);
+                
+                string statusText = "";
+                if (!canUpgrade)
+                {
+                    if (currentSlots < upgrade.requiredCurrentSlots)
+                        statusText = " [容量不足]";
+                    else
+                        statusText = " [已超过]";
+                }
+                else if (!canAfford)
+                {
+                    statusText = " [材料不足]";
+                }
+                else
+                {
+                    statusText = " [可升级]";
+                    hasAvailableUpgrade = true;
+                }
+                
+                Debug.Log($"{upgrade.upgradeName}{statusText}");
+                Debug.Log($"  要求: {upgrade.requiredCurrentSlots}格 -> {upgrade.maxSlots}格 (+{upgrade.slotsToAdd}格)");
+                Debug.Log($"  费用: {CalculateUpgradeCost(upgrade)}金币");
+                
+                if (upgrade.requiredMaterials.Count > 0)
+                {
+                    Debug.Log("  材料需求:");
+                    foreach (var material in upgrade.requiredMaterials)
+                    {
+                        int owned = inventory.GetItemCount(material.material);
+                        Debug.Log($"    - {material.material.ItemName} x{material.amount} (拥有:{owned})");
+                    }
+                }
+                Debug.Log("");
+            }
+            
+            if (hasAvailableUpgrade)
+            {
+                ShowDialogue(tailorData.upgradeOfferText);
+            }
+            else
+            {
+                ShowDialogue("目前没有适合你的升级选项，请提升背包容量后再来。");
+            }
+        }
+        
         private BagUpgrade FindAvailableUpgrade(Inventory.Inventory inventory)
         {
             if (tailorData == null || tailorData.bagUpgrades == null) return null;
             
             int currentSlots = inventory.GetMaxSlots();
             
-            // 找到适合当前背包容量的升级选项
+            // 修改条件：当前容量必须等于要求的容量
             return tailorData.bagUpgrades.Find(u => 
-                currentSlots >= u.requiredCurrentSlots && 
-                currentSlots < u.maxSlots);
+                currentSlots == u.requiredCurrentSlots);
+        }
+        
+        private void CreateDefaultBagUpgrades()
+        {
+            if (tailorData.bagUpgrades == null)
+            {
+                tailorData.bagUpgrades = new System.Collections.Generic.List<BagUpgrade>();
+            }
+            
+            // 创建默认的背包升级选项
+            tailorData.bagUpgrades.Add(new BagUpgrade
+            {
+                upgradeName = "小型背包扩展",
+                description = "增加2个背包格子",
+                slotsToAdd = 2,
+                requiredCurrentSlots = 10,
+                maxSlots = 12,
+                upgradeFee = 500,
+                requiredMaterials = new System.Collections.Generic.List<UpgradeMaterial>()
+            });
+            
+            tailorData.bagUpgrades.Add(new BagUpgrade
+            {
+                upgradeName = "中型背包扩展",
+                description = "增加3个背包格子",
+                slotsToAdd = 3,
+                requiredCurrentSlots = 12,
+                maxSlots = 15,
+                upgradeFee = 1000,
+                requiredMaterials = new System.Collections.Generic.List<UpgradeMaterial>()
+            });
+            
+            tailorData.bagUpgrades.Add(new BagUpgrade
+            {
+                upgradeName = "大型背包扩展",
+                description = "增加5个背包格子",
+                slotsToAdd = 5,
+                requiredCurrentSlots = 15,
+                maxSlots = 20,
+                upgradeFee = 2000,
+                requiredMaterials = new System.Collections.Generic.List<UpgradeMaterial>()
+            });
         }
         
         private int CalculateUpgradeCost(BagUpgrade upgrade)

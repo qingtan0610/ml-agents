@@ -25,7 +25,7 @@ MonoBehaviour:
   isTradeable: 1
   isDestroyable: 1
   weaponType: 2
-  damage: 10
+  damage: 100
   attackSpeed: 1
   attackRange: 10
   projectileSpeed: 10
@@ -48,6 +48,6 @@ MonoBehaviour:
   debuffChance: 1
   debuffRequiresCrit: 0
   weaponModelPrefab: {fileID: 0}
-  projectilePrefab: {fileID: 0}
+  projectilePrefab: {fileID: 5161033369372815776, guid: 8f6ab84948af6384aaf3f999eb5b1653, type: 3}
   holdOffset: {x: 0, y: 0, z: 0}
   holdRotation: {x: 0, y: 0, z: 0}

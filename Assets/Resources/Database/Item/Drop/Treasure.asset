@@ -12,22 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 0}
   m_Name: Treasure
   m_EditorClassIdentifier: Assembly-CSharp:Loot:LootTable
-  minGold: 5
-  maxGold: 20
-  goldDropChance: 0.8
-  minBullets: 5
-  maxBullets: 15
-  bulletDropChance: 0.3
-  minArrows: 3
-  maxArrows: 10
-  arrowDropChance: 0.2
-  minMana: 10
-  maxMana: 30
-  manaDropChance: 0.15
   possibleItems:
   - item: {fileID: 11400000, guid: ac0b00f7c11b5d247b76ea72bd08e2d0, type: 2}
     minQuantity: 1
     maxQuantity: 2
     dropChance: 0.73
+  - item: {fileID: 11400000, guid: 907b8d8080936d8438e8831a3388c5c4, type: 2}
+    minQuantity: 1
+    maxQuantity: 2
+    dropChance: 1
   maxItemDrops: 2
   luckMultiplier: 1

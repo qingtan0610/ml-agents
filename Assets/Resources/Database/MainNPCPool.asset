@@ -44,4 +44,4 @@ MonoBehaviour:
     maxMapLevel: 99
     isUnique: 0
   allowDuplicates: 0
-  maxNPCsPerType: 3
+  maxNPCsPerType: 5
