@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using AI.Stats;
 using AI.Decision;
@@ -40,6 +41,7 @@ namespace AI.Core
         [Header("Communication")]
         [SerializeField] private float communicationCooldown = 5f;
         [SerializeField] private float communicationRange = 20f;
+        [SerializeField] private float helpCooldown = 30f;    // help请求的冷却时间
         
         // 组件引用
         private Rigidbody2D rb;
@@ -55,6 +57,7 @@ namespace AI.Core
         private Vector2 moveDirection;
         private float nextAttackTime;
         private float nextCommunicationTime;
+        private float nextHelpTime;               // help请求的下次可用时间
         private bool killedEnemyThisFrame = false;
         private bool collectedItemThisFrame = false;
         private bool reachedPortal = false;
@@ -118,6 +121,12 @@ namespace AI.Core
                 {
                     // 动画控制器会自动检测移动
                 }
+            }
+            
+            // 定期检查是否需要发送交互机消息（降低频率避免spam）
+            if (Time.frameCount % 180 == 0) // 每3秒检查一次
+            {
+                ConsiderRequestingHelp();
             }
         }
         
@@ -249,6 +258,9 @@ namespace AI.Core
             var npc = target.GetComponent<NPCBase>();
             if (npc != null)
             {
+                // 通知其他AI发现了NPC（根据NPC类型发送具体消息）
+                AnnounceFindNPC(npc);
+                
                 npc.StartInteraction(gameObject);
                 StartCoroutine(HandleNPCInteraction(npc));
                 return;
@@ -258,6 +270,13 @@ namespace AI.Core
             var interactable = target.GetComponent<IInteractable>();
             if (interactable != null)
             {
+                // 检查是否是泉水
+                if (target.name.Contains("Fountain") || target.GetComponent<Interactables.Fountain>() != null)
+                {
+                    // 通知其他AI发现了水源
+                    SendCommunication(CommunicationType.FoundWater);
+                }
+                
                 interactable.Interact(gameObject);
                 
                 // 检查是否是传送门
@@ -544,10 +563,30 @@ namespace AI.Core
         // 通信控制
         public void SendCommunication(CommunicationType type)
         {
-            if (Time.time < nextCommunicationTime || aiStats.IsDead) return;
+            if (aiStats.IsDead) return;
+            
+            // Help请求有特殊的冷却时间
+            if (type == CommunicationType.Help)
+            {
+                if (Time.time < nextHelpTime) 
+                {
+                    // 减少日志spam - 每5秒最多输出一次冷却提示
+                    if (Time.frameCount % 300 == 0)
+                    {
+                        Debug.Log($"[AIController] {name} Help冷却中，剩余: {nextHelpTime - Time.time:F0}秒");
+                    }
+                    return;
+                }
+                nextHelpTime = Time.time + helpCooldown;
+                Debug.Log($"[AIController] {name} 发送Help请求（{helpCooldown}秒冷却）");
+            }
+            else
+            {
+                if (Time.time < nextCommunicationTime) return;
+                nextCommunicationTime = Time.time + communicationCooldown;
+            }
             
             communicator.SendMessage(type, transform.position);
-            nextCommunicationTime = Time.time + communicationCooldown;
         }
         
         // 面对面交流
@@ -700,7 +739,12 @@ namespace AI.Core
             {
                 case AIState.Critical:
                     // 危急状态 - 紧急求救并寻找补给
-                    SendCommunication(CommunicationType.Help);
+                    // 智能判断是否真的需要求救
+                    if (ShouldRequestHelp())
+                    {
+                        SendCommunication(CommunicationType.Help);
+                    }
+                    
                     // 使用恢复物品
                     UseHealthItems();
                     UseFoodItems();
@@ -723,17 +767,32 @@ namespace AI.Core
                     var communicator = GetComponent<AICommunicator>();
                     if (communicator != null)
                     {
-                        // 检查最近的水源消息
-                        var waterMsg = communicator.GetLatestMessage(CommunicationType.FoundWater);
-                        if (waterMsg != null)
+                        // 检查是否有AI请求帮助（优先级最高）
+                        var comeHereMsg = communicator.GetLatestMessage(CommunicationType.ComeHere);
+                        if (comeHereMsg != null)
                         {
-                            SetMoveTarget(waterMsg.Position);
+                            Debug.Log($"[AIController] {name} 响应ComeHere请求，前往 {comeHereMsg.Position}");
+                            SetMoveTarget(comeHereMsg.Position);
+                        }
+                        // 检查最近的水源消息
+                        else if (aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.4f)
+                        {
+                            var waterMsg = communicator.GetLatestMessage(CommunicationType.FoundWater);
+                            if (waterMsg != null)
+                            {
+                                Debug.Log($"[AIController] {name} 前往水源位置 {waterMsg.Position}");
+                                SetMoveTarget(waterMsg.Position);
+                            }
                         }
                         // 检查商人消息
-                        var npcMsg = communicator.GetLatestMessage(CommunicationType.FoundNPC);
-                        if (npcMsg != null)
+                        else
                         {
-                            SetMoveTarget(npcMsg.Position);
+                            var npcMsg = communicator.GetLatestMessage(CommunicationType.FoundNPC);
+                            if (npcMsg != null)
+                            {
+                                Debug.Log($"[AIController] {name} 前往NPC位置 {npcMsg.Position}");
+                                SetMoveTarget(npcMsg.Position);
+                            }
                         }
                     }
                     break;
@@ -812,7 +871,11 @@ namespace AI.Core
             }
             else if (action.Contains("求救"))
             {
-                SendCommunication(CommunicationType.Help);
+                // 智能判断是否真的需要求救
+                if (ShouldRequestHelp())
+                {
+                    SendCommunication(CommunicationType.Help);
+                }
             }
             else if (action.Contains("交流"))
             {
@@ -906,6 +969,170 @@ namespace AI.Core
                             break;
                         }
                     }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// 智能判断是否应该请求帮助
+        /// </summary>
+        private bool ShouldRequestHelp()
+        {
+            // 基础状态检查
+            float healthPercent = aiStats.CurrentHealth / aiStats.Config.maxHealth;
+            float hungerPercent = aiStats.CurrentHunger / aiStats.Config.maxHunger;
+            float thirstPercent = aiStats.CurrentThirst / aiStats.Config.maxThirst;
+            float staminaPercent = aiStats.CurrentStamina / aiStats.Config.maxStamina;
+            
+            // 检查附近敌人威胁
+            var perception = GetComponent<AI.Perception.AIPerception>();
+            var nearbyEnemies = perception?.GetNearbyEnemies() ?? new List<Enemy.Enemy2D>();
+            
+            // 评估自身战斗能力
+            bool hasWeapon = inventory?.EquippedWeapon != null;
+            bool hasAmmo = true;
+            if (hasWeapon && inventory.EquippedWeapon.RequiredAmmo != Inventory.AmmoType.None)
+            {
+                hasAmmo = ammoManager != null && ammoManager.GetAmmo(inventory.EquippedWeapon.RequiredAmmo) > 0;
+            }
+            
+            // 计算真正的威胁
+            int seriousThreats = 0;
+            foreach (var enemy in nearbyEnemies)
+            {
+                float distance = Vector2.Distance(transform.position, enemy.transform.position);
+                if (distance < 3f && enemy.IsAlive) // 3单位内的活敌人算严重威胁
+                {
+                    seriousThreats++;
+                }
+            }
+            
+            // 判断求救条件（必须同时满足危急状态和真正的威胁）
+            bool criticalHealth = healthPercent < 0.15f;
+            bool criticalResources = hungerPercent < 0.1f || thirstPercent < 0.1f;
+            bool noMeansToFight = (!hasWeapon || !hasAmmo) && seriousThreats > 0;
+            bool overwhelmed = seriousThreats >= 3 && (healthPercent < 0.3f || staminaPercent < 0.2f);
+            bool desperateSituation = criticalHealth && seriousThreats >= 1;
+            
+            bool shouldHelp = criticalResources || noMeansToFight || overwhelmed || desperateSituation;
+            
+            if (shouldHelp)
+            {
+                Debug.Log($"[AIController] {name} 请求帮助 - 生命:{healthPercent:P0}, 威胁:{seriousThreats}, 武器:{hasWeapon}, 弹药:{hasAmmo}");
+            }
+            
+            return shouldHelp;
+        }
+        
+        /// <summary>
+        /// 通知其他AI发现了NPC
+        /// </summary>
+        private void AnnounceFindNPC(NPCBase npc)
+        {
+            if (npc == null) return;
+            
+            // 根据NPC类型发送具体的发现消息
+            switch (npc.NPCType)
+            {
+                case NPCType.Merchant:
+                    Debug.Log($"[AIController] {name} 发现了商人！");
+                    break;
+                case NPCType.Blacksmith:
+                    Debug.Log($"[AIController] {name} 发现了铁匠！");
+                    break;
+                case NPCType.Doctor:
+                    Debug.Log($"[AIController] {name} 发现了医生！");
+                    break;
+                case NPCType.Restaurant:
+                    Debug.Log($"[AIController] {name} 发现了餐馆！");
+                    break;
+                case NPCType.Tailor:
+                    Debug.Log($"[AIController] {name} 发现了裁缝！");
+                    break;
+            }
+            
+            // 发送通用的发现NPC消息
+            SendCommunication(CommunicationType.FoundNPC);
+        }
+        
+        /// <summary>
+        /// 请求其他AI到这里来（在需要协助时使用）
+        /// </summary>
+        public void RequestAIComeHere()
+        {
+            Debug.Log($"[AIController] {name} 请求其他AI到这里来");
+            SendCommunication(CommunicationType.ComeHere);
+        }
+        
+        /// <summary>
+        /// 通知其他AI我要去某个地方
+        /// </summary>
+        public void AnnounceGoingTo(Vector2 destination)
+        {
+            Debug.Log($"[AIController] {name} 通知要前往 {destination}");
+            SendCommunication(CommunicationType.GoingTo);
+        }
+        
+        /// <summary>
+        /// 智能决定是否需要发送交互机消息
+        /// </summary>
+        private void ConsiderRequestingHelp()
+        {
+            // 在以下情况考虑请求其他AI来帮助：
+            // 1. 发现了重要资源但自己状态不好
+            // 2. 发现了传送门需要4人激活
+            // 3. 面临困难需要支援
+            
+            if (reachedPortal)
+            {
+                // 发现传送门，请求其他AI过来
+                RequestAIComeHere();
+            }
+            else if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.3f)
+            {
+                // 健康状态不佳，可能需要支援
+                var perception = GetComponent<AI.Perception.AIPerception>();
+                var nearbyEnemies = perception?.GetNearbyEnemies();
+                if (nearbyEnemies != null && nearbyEnemies.Count >= 2)
+                {
+                    RequestAIComeHere();
+                }
+            }
+            
+            // 检查是否需要通知其他AI我要去某个地方
+            ConsiderAnnounceMovement();
+        }
+        
+        /// <summary>
+        /// 考虑是否需要通知其他AI我的行动计划
+        /// </summary>
+        private void ConsiderAnnounceMovement()
+        {
+            var communicator = GetComponent<AICommunicator>();
+            if (communicator == null) return;
+            
+            // 检查是否有重要的目标需要通知
+            // 1. 前往传送门
+            var portalMsg = communicator.GetLatestMessage(CommunicationType.FoundPortal);
+            if (portalMsg != null && Vector2.Distance(transform.position, portalMsg.Position) > 8f)
+            {
+                // 距离传送门较远，通知其他AI我要去传送门
+                AnnounceGoingTo(portalMsg.Position);
+                return;
+            }
+            
+            // 2. 前往重要NPC（当自己状态需要时）
+            bool needsHealing = aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f;
+            bool needsFood = aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f;
+            bool needsWater = aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.3f;
+            
+            if (needsHealing || needsFood || needsWater)
+            {
+                var npcMsg = communicator.GetLatestMessage(CommunicationType.FoundNPC);
+                if (npcMsg != null && Vector2.Distance(transform.position, npcMsg.Position) > 5f)
+                {
+                    // 距离NPC较远，通知其他AI我要去NPC那里
+                    AnnounceGoingTo(npcMsg.Position);
                 }
             }
         }

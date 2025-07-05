@@ -24,10 +24,12 @@ namespace AI.Core
         
         [Header("Decision Settings")]
         [SerializeField] private float decisionInterval = 0.5f;
-        [SerializeField] private bool useDeepSeekAPI = false;
+        [SerializeField] private bool useDeepSeekAPI = true;     // 默认启用DeepSeek
         [SerializeField] private float deepSeekThreshold = 0.3f; // 当AI健康度低于此值时调用DeepSeek
         [SerializeField] private float deepSeekCooldown = 10f;   // DeepSeek调用冷却时间
+        [SerializeField] private float initialDecisionDelay = 2f; // 初始决策延迟
         private float lastDeepSeekTime = -10f;
+        private bool hasInitialDecision = false;
         
         [Header("Current State")]
         [SerializeField] private AIState currentState = AIState.Exploring;
@@ -68,6 +70,8 @@ namespace AI.Core
             currentTarget = Vector2.zero;
             currentInteractable = null;
             memory.Clear();
+            hasInitialDecision = false;
+            lastDeepSeekTime = Time.time - deepSeekCooldown; // 允许立即使用DeepSeek
             
             // 重置位置到出生点
             controller.ResetToSpawn();
@@ -323,22 +327,130 @@ namespace AI.Core
             if (Time.time - lastDeepSeekTime < deepSeekCooldown)
                 return false;
             
-            // 在关键时刻使用DeepSeek API
-            float healthPercent = aiStats.CurrentHealth / aiStats.Config.maxHealth;
-            float resourcePercent = (aiStats.CurrentHunger + aiStats.CurrentThirst) / 
-                                  (aiStats.Config.maxHunger + aiStats.Config.maxThirst);
+            // 初始决策 - 游戏开始后进行一次决策
+            if (!hasInitialDecision && Time.time > initialDecisionDelay)
+            {
+                Debug.Log("[AIBrain] 触发初始DeepSeek决策");
+                hasInitialDecision = true;
+                lastDeepSeekTime = Time.time;
+                return true;
+            }
             
-            bool shouldUse = healthPercent < deepSeekThreshold || 
-                            resourcePercent < deepSeekThreshold ||
-                            currentState == AIState.Critical ||
-                            perception.GetNearbyEnemies().Count >= 3;  // 被多个敌人包围
+            // 关键时刻使用DeepSeek API
+            float healthPercent = aiStats.CurrentHealth / aiStats.Config.maxHealth;
+            float hungerPercent = aiStats.CurrentHunger / aiStats.Config.maxHunger;
+            float thirstPercent = aiStats.CurrentThirst / aiStats.Config.maxThirst;
+            
+            // 事件触发的决策
+            var nearbyEnemies = perception.GetNearbyEnemies();
+            var nearbyNPCs = perception.GetNearbyNPCs();
+            
+            // 综合评估是否需要DeepSeek决策
+            bool isInDanger = IsInRealDanger(healthPercent, hungerPercent, thirstPercent, nearbyEnemies);
+            bool needsSocialHelp = (nearbyNPCs.Count > 0 && aiStats.GetMood(MoodDimension.Social) < -30f);
+            bool severelyDepressed = (aiStats.GetMood(MoodDimension.Emotion) < -70f);
+            bool periodicDecision = (Time.time - lastDeepSeekTime > deepSeekCooldown * 5); // 延长定期决策间隔
+            
+            // 如果状态很好且没有特殊情况，不需要DeepSeek
+            bool isInGoodCondition = healthPercent > 0.8f && hungerPercent > 0.8f && thirstPercent > 0.8f && 
+                                   nearbyEnemies.Count == 0 && aiStats.GetMood(MoodDimension.Emotion) > -30f;
+            
+            if (isInGoodCondition && !needsSocialHelp && !periodicDecision)
+            {
+                return false; // 状态良好时不需要频繁决策
+            }
+            
+            bool shouldUse = 
+                // 生存危机
+                healthPercent < deepSeekThreshold || 
+                hungerPercent < deepSeekThreshold ||
+                thirstPercent < deepSeekThreshold ||
+                currentState == AIState.Critical ||
+                // 真正的危险情况
+                isInDanger ||
+                // 社交机会
+                needsSocialHelp ||
+                // 心情非常糟糕
+                severelyDepressed ||
+                // 定期决策（降低频率）
+                periodicDecision;
             
             if (shouldUse)
             {
+                Debug.Log($"[AIBrain] 触发DeepSeek决策 - 健康:{healthPercent:P0}, 饥饿:{hungerPercent:P0}, 口渴:{thirstPercent:P0}, 敌人:{nearbyEnemies.Count}, NPC:{nearbyNPCs.Count}");
                 lastDeepSeekTime = Time.time;
             }
             
             return shouldUse;
+        }
+        
+        /// <summary>
+        /// 判断AI是否处于真正的危险中（综合考虑多个因素）
+        /// </summary>
+        private bool IsInRealDanger(float healthPercent, float hungerPercent, float thirstPercent, List<Enemy.Enemy2D> nearbyEnemies)
+        {
+            if (nearbyEnemies.Count == 0) return false;
+            
+            // 评估AI的战斗能力
+            bool hasWeapon = inventory.EquippedWeapon != null;
+            bool hasAmmo = true; // 默认近战武器不需要弹药
+            if (hasWeapon && inventory.EquippedWeapon.RequiredAmmo != AmmoType.None)
+            {
+                var ammoManager = GetComponent<Inventory.Managers.AmmoManager>();
+                hasAmmo = ammoManager != null && ammoManager.GetAmmo(inventory.EquippedWeapon.RequiredAmmo) > 0;
+            }
+            
+            // 评估AI的状态
+            bool lowHealth = healthPercent < 0.4f;
+            bool lowStamina = aiStats.CurrentStamina < aiStats.Config.maxStamina * 0.3f; // 体力不足难以逃跑
+            bool criticalState = healthPercent < 0.2f || hungerPercent < 0.15f || thirstPercent < 0.15f;
+            
+            // 评估敌人威胁
+            int closeEnemies = 0; // 近距离敌人（真正的威胁）
+            foreach (var enemy in nearbyEnemies)
+            {
+                float distance = Vector2.Distance(transform.position, enemy.transform.position);
+                if (distance < 5f) // 5单位内算近距离威胁
+                {
+                    closeEnemies++;
+                }
+            }
+            
+            // 综合判断真正的危险情况
+            bool shouldSeekHelp = false;
+            
+            // 1. 无武器且被围攻
+            if (!hasWeapon && closeEnemies >= 2)
+            {
+                shouldSeekHelp = true;
+            }
+            // 2. 有武器但没弹药，且敌人很多
+            else if (hasWeapon && !hasAmmo && closeEnemies >= 3)
+            {
+                shouldSeekHelp = true;
+            }
+            // 3. 生命很低且被多个敌人围攻
+            else if (lowHealth && closeEnemies >= 2)
+            {
+                shouldSeekHelp = true;
+            }
+            // 4. 体力不足无法逃跑且面临多个敌人
+            else if (lowStamina && closeEnemies >= 3)
+            {
+                shouldSeekHelp = true;
+            }
+            // 5. 生存状态危急且有敌人威胁
+            else if (criticalState && closeEnemies >= 1)
+            {
+                shouldSeekHelp = true;
+            }
+            
+            if (shouldSeekHelp)
+            {
+                Debug.Log($"[AIBrain] 检测到真正危险 - 武器:{hasWeapon}, 弹药:{hasAmmo}, 近敌:{closeEnemies}, 生命:{healthPercent:P0}, 体力:{lowStamina}");
+            }
+            
+            return shouldSeekHelp;
         }
         
         private void RequestDeepSeekDecision()

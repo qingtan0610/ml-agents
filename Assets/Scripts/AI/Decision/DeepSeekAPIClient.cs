@@ -8,6 +8,7 @@ using AI.Stats;
 using AI.Core;
 using Inventory;
 using Inventory.Managers;
+using System.Linq;
 
 namespace AI.Decision
 {
@@ -181,6 +182,7 @@ namespace AI.Decision
             };
             
             string jsonRequest = JsonUtility.ToJson(request);
+            Debug.Log($"[DeepSeekAPI] 发送请求: {jsonRequest}");
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonRequest);
             
             int retryCount = 0;
@@ -200,11 +202,21 @@ namespace AI.Decision
                     {
                         try
                         {
+                            Debug.Log($"[DeepSeekAPI] 原始响应: {webRequest.downloadHandler.text}");
+                            
                             var response = JsonUtility.FromJson<DeepSeekResponse>(webRequest.downloadHandler.text);
+                            
+                            if (response == null)
+                            {
+                                Debug.LogError($"[DeepSeekAPI] JSON解析失败，原始响应: {webRequest.downloadHandler.text}");
+                                callback?.Invoke(null);
+                                yield break;
+                            }
                             
                             if (response.error != null)
                             {
                                 Debug.LogError($"[DeepSeekAPI] API错误: {response.error.message}");
+                                Debug.LogError($"[DeepSeekAPI] 错误类型: {response.error.type}, 代码: {response.error.code}");
                                 callback?.Invoke(null);
                                 yield break;
                             }
@@ -329,6 +341,24 @@ namespace AI.Decision
                 sb.AppendLine();
             }
             sb.AppendLine($"可见物品: {context.NearbyItems.Count}个");
+            
+            // 添加通信信息
+            var communicator = context.Stats.GetComponent<AICommunicator>();
+            if (communicator != null)
+            {
+                var helpMsg = communicator.GetLatestMessage(CommunicationType.Help);
+                var comeHereMsg = communicator.GetLatestMessage(CommunicationType.ComeHere);
+                var portalMsg = communicator.GetLatestMessage(CommunicationType.FoundPortal);
+                var waterMsg = communicator.GetLatestMessage(CommunicationType.FoundWater);
+                var npcMsg = communicator.GetLatestMessage(CommunicationType.FoundNPC);
+                
+                sb.AppendLine("\n收到的交互机消息:");
+                if (helpMsg != null) sb.AppendLine("- 有AI求救");
+                if (comeHereMsg != null) sb.AppendLine("- 有AI请求支援");
+                if (portalMsg != null) sb.AppendLine("- 发现了传送门位置");
+                if (waterMsg != null) sb.AppendLine("- 发现了水源位置");
+                if (npcMsg != null) sb.AppendLine("- 发现了NPC位置");
+            }
             
             sb.AppendLine("\n请分析情况并提供决策建议。回复格式：");
             sb.AppendLine("状态: [Exploring/Fighting/Fleeing/Seeking/Interacting/Communicating/Resting/Critical]");
