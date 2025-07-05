@@ -32,10 +32,13 @@ MonoBehaviour:
   shopInventory:
     items:
     - item: {fileID: 11400000, guid: 907b8d8080936d8438e8831a3388c5c4, type: 2}
-      stock: 0
+      stock: 5
       restockAmount: 5
-      priceOverride: 0
+      priceOverride: 5
       isDailyDeal: 1
+  randomizeInventory: 1
+  minItemTypes: 1
+  maxItemTypes: 8
   buyPriceMultiplier: 1
   sellPriceMultiplier: 0.5
   hasDailyDeals: 1

@@ -355,5 +355,13 @@ namespace NPC.Types
             // 如果没有特色菜，随机返回一个
             return availableMenu[Random.Range(0, availableMenu.Count)];
         }
+        
+        /// <summary>
+        /// 处理AI请求
+        /// </summary>
+        public bool HandleAIRequest(string request, GameObject ai)
+        {
+            return AI.NPCAIInteractionHandler.HandleRestaurantAIInteraction(this, ai, request);
+        }
     }
 }

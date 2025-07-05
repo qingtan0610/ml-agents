@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Linq;
 using AI.Stats;
 using Inventory;
 using Inventory.Items;
@@ -11,6 +12,7 @@ using Combat;
 using Player;
 using Interactables;
 using Rooms;
+using Visuals;
 
 namespace AI.Core
 {
@@ -18,7 +20,7 @@ namespace AI.Core
     /// AI控制器 - 负责执行AI的具体行动
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
-    [RequireComponent(typeof(PlayerController2D))]
+    [RequireComponent(typeof(CombatSystem2D))]
     public class AIController : MonoBehaviour
     {
         [Header("Movement")]
@@ -40,13 +42,13 @@ namespace AI.Core
         
         // 组件引用
         private Rigidbody2D rb;
-        private PlayerController2D playerController;
         private AIStats aiStats;
         private Inventory.Inventory inventory;
         private CurrencyManager currencyManager;
         private AmmoManager ammoManager;
         private CombatSystem2D combatSystem;
         private AICommunicator communicator;
+        private AnimationController2D animController;
         
         // 状态
         private Vector2 moveDirection;
@@ -60,19 +62,31 @@ namespace AI.Core
         private GameObject currentTarget;
         private AIActionPriority currentPriority = AIActionPriority.Normal;
         
+        // 面对面交流
+        private float faceToFaceRange = 2f;
+        private float lastFaceToFaceTime = 0f;
+        private float faceToFaceCooldown = 10f;
+        
         private void Awake()
         {
             // 获取组件
             rb = GetComponent<Rigidbody2D>();
-            playerController = GetComponent<PlayerController2D>();
             aiStats = GetComponent<AIStats>();
             inventory = GetComponent<Inventory.Inventory>();
             currencyManager = GetComponent<CurrencyManager>();
             ammoManager = GetComponent<AmmoManager>();
             combatSystem = GetComponent<CombatSystem2D>();
+            animController = GetComponent<AnimationController2D>();
             
             // 创建通信组件
             communicator = gameObject.AddComponent<AICommunicator>();
+            
+            // 设置2D刚体
+            if (rb != null)
+            {
+                rb.gravityScale = 0f;
+                rb.freezeRotation = true;
+            }
             
             // 设置层
             if (interactableLayer == 0)
@@ -90,7 +104,15 @@ namespace AI.Core
             // 更新移动
             if (moveDirection != Vector2.zero && !aiStats.IsDead)
             {
-                playerController.SetMovementInput(moveDirection);
+                // 直接控制刚体移动
+                float currentSpeed = isRunning ? runSpeed : moveSpeed;
+                rb.velocity = moveDirection * currentSpeed;
+                
+                // 更新动画
+                if (animController != null)
+                {
+                    // 动画控制器会自动检测移动
+                }
             }
         }
         
@@ -104,19 +126,26 @@ namespace AI.Core
             // 根据体力决定是否奔跑
             if (isRunning && aiStats.CurrentStamina > 10f)
             {
-                playerController.StartSprint();
+                // 继续奔跑
+                aiStats.SetMovementState(true);
             }
             else
             {
-                playerController.StopSprint();
                 isRunning = false;
+                aiStats.SetMovementState(moveDirection != Vector2.zero);
             }
         }
         
         public void StopMoving()
         {
             moveDirection = Vector2.zero;
-            playerController.SetMovementInput(Vector2.zero);
+            rb.velocity = Vector2.zero;
+            aiStats.SetMovementState(false);
+            
+            if (animController != null)
+            {
+                // 动画控制器会自动检测停止
+            }
         }
         
         // 战斗控制
@@ -133,10 +162,19 @@ namespace AI.Core
             
             // 面向目标
             Vector2 direction = (target.transform.position - transform.position).normalized;
-            playerController.SetAimDirection(direction);
             
-            // 执行攻击
-            playerController.PerformAttack();
+            // 设置面向
+            if (animController != null)
+            {
+                animController.SetFacing(direction.x > 0);
+            }
+            
+            // 使用战斗系统执行攻击
+            if (combatSystem != null)
+            {
+                combatSystem.PerformAttack();
+            }
+            
             nextAttackTime = Time.time + attackCooldown;
             
             // 监听敌人死亡
@@ -204,83 +242,140 @@ namespace AI.Core
                 interactable.Interact(gameObject);
                 
                 // 检查是否是传送门
-                if (target.name.Contains("Portal"))
+                if (target.name.Contains("Portal") || target.name.Contains("Teleporter"))
                 {
                     reachedPortal = true;
+                    // 通知其他AI传送门位置
+                    SendCommunication(CommunicationType.FoundPortal);
+                    // 尝试激活传送装置
+                    var teleporter = target.GetComponent<Interactables.TeleportDevice>();
+                    if (teleporter != null)
+                    {
+                        teleporter.TryActivate(gameObject);
+                    }
                 }
             }
         }
         
         private IEnumerator HandleNPCInteraction(NPCBase npc)
         {
-            // AI与NPC的自动交互逻辑
-            yield return new WaitForSeconds(1f);
+            // AI与NPC的自动交互逻辑 - 不阻塞
+            yield return null; // 立即返回，不等待
             
             // 根据NPC类型执行不同的交互
+            bool interactionComplete = false;
             switch (npc.NPCType)
             {
                 case NPCType.Merchant:
-                    HandleMerchantInteraction(npc);
+                    interactionComplete = HandleMerchantInteraction(npc);
                     break;
                 case NPCType.Doctor:
-                    HandleDoctorInteraction(npc);
+                    interactionComplete = HandleDoctorInteraction(npc);
                     break;
                 case NPCType.Restaurant:
-                    HandleRestaurantInteraction(npc);
+                    interactionComplete = HandleRestaurantInteraction(npc);
                     break;
                 case NPCType.Blacksmith:
-                    HandleBlacksmithInteraction(npc);
+                    interactionComplete = HandleBlacksmithInteraction(npc);
                     break;
                 case NPCType.Tailor:
-                    HandleTailorInteraction(npc);
+                    interactionComplete = HandleTailorInteraction(npc);
                     break;
             }
             
-            yield return new WaitForSeconds(2f);
-            npc.EndInteraction();
+            // 如果交互完成，结束交互
+            if (interactionComplete)
+            {
+                npc.EndInteraction();
+            }
         }
         
-        private void HandleMerchantInteraction(NPCBase merchant)
+        private bool HandleMerchantInteraction(NPCBase merchant)
         {
             // AI购买决策
-            if (currencyManager.CurrentGold > 100)
+            var merchantNPC = merchant as NPC.Types.MerchantNPC;
+            if (merchantNPC == null) return true;
+            
+            // 检查是否需要购买补给品
+            if (currencyManager.CurrentGold > 50)
             {
-                // 优先购买补给品
-                Debug.Log($"[AI] {name} 正在商人处购买补给品");
+                // 需要补充生命
+                if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f)
+                {
+                    merchantNPC.HandleAIRequest("buy_health_potion", gameObject);
+                    return true;
+                }
+                // 需要补充食物
+                if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f)
+                {
+                    merchantNPC.HandleAIRequest("buy_food", gameObject);
+                    return true;
+                }
+                // 需要补充水
+                if (aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.3f)
+                {
+                    merchantNPC.HandleAIRequest("buy_water", gameObject);
+                    return true;
+                }
             }
+            return false;
         }
         
-        private void HandleDoctorInteraction(NPCBase doctor)
+        private bool HandleDoctorInteraction(NPCBase doctor)
         {
             // AI治疗决策
+            var doctorNPC = doctor as NPC.Types.DoctorNPC;
+            if (doctorNPC == null) return true;
+            
             if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f && currencyManager.CurrentGold > 50)
             {
-                Debug.Log($"[AI] {name} 正在接受治疗");
+                doctorNPC.HandleAIRequest("heal", gameObject);
+                return true;
             }
+            return false;
         }
         
-        private void HandleRestaurantInteraction(NPCBase restaurant)
+        private bool HandleRestaurantInteraction(NPCBase restaurant)
         {
             // AI进食决策
-            if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f || 
-                aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.3f)
+            var restaurantNPC = restaurant as NPC.Types.RestaurantNPC;
+            if (restaurantNPC == null) return true;
+            
+            // 口渴严重，喝免费水
+            if (aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.3f)
             {
-                Debug.Log($"[AI] {name} 正在餐厅用餐");
+                restaurantNPC.HandleAIRequest("water", gameObject);
+                return true;
             }
+            // 饥饿且有钱
+            else if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f && currencyManager.CurrentGold > 10)
+            {
+                restaurantNPC.HandleAIRequest("food", gameObject);
+                return true;
+            }
+            return false;
         }
         
-        private void HandleBlacksmithInteraction(NPCBase blacksmith)
+        private bool HandleBlacksmithInteraction(NPCBase blacksmith)
         {
             // AI装备升级决策
+            var blacksmithNPC = blacksmith as NPC.Types.BlacksmithNPC;
+            if (blacksmithNPC == null) return true;
+            
             if (inventory.EquippedWeapon != null && currencyManager.CurrentGold > 200)
             {
-                Debug.Log($"[AI] {name} 正在升级武器");
+                blacksmithNPC.HandleAIRequest("upgrade_weapon", gameObject);
+                return true;
             }
+            return false;
         }
         
-        private void HandleTailorInteraction(NPCBase tailor)
+        private bool HandleTailorInteraction(NPCBase tailor)
         {
             // AI背包扩容决策
+            var tailorNPC = tailor as NPC.Types.TailorNPC;
+            if (tailorNPC == null) return true;
+            
             int usedSlots = 0;
             for (int i = 0; i < inventory.Size; i++)
             {
@@ -289,8 +384,10 @@ namespace AI.Core
             
             if (usedSlots > inventory.Size * 0.8f && currencyManager.CurrentGold > 500)
             {
-                Debug.Log($"[AI] {name} 正在扩容背包");
+                tailorNPC.HandleAIRequest("expand_bag", gameObject);
+                return true;
             }
+            return false;
         }
         
         // 物品使用
@@ -320,6 +417,109 @@ namespace AI.Core
             }
         }
         
+        // 智能武器选择
+        public void SelectBestWeapon(GameObject target = null)
+        {
+            if (inventory == null || aiStats.IsDead) return;
+            
+            WeaponItem bestWeapon = null;
+            float bestScore = -1f;
+            
+            // 检查所有背包中的武器
+            for (int i = 0; i < inventory.Size; i++)
+            {
+                var slot = inventory.GetSlot(i);
+                if (slot.IsEmpty) continue;
+                
+                var weapon = slot.Item as WeaponItem;
+                if (weapon == null) continue;
+                
+                float score = EvaluateWeapon(weapon, target);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestWeapon = weapon;
+                }
+            }
+            
+            // 装备最佳武器
+            if (bestWeapon != null && inventory.EquippedWeapon != bestWeapon)
+            {
+                inventory.EquipWeapon(bestWeapon);
+                Debug.Log($"[AI] {name} 切换到武器: {bestWeapon.ItemName}");
+            }
+        }
+        
+        private float EvaluateWeapon(WeaponItem weapon, GameObject target)
+        {
+            float score = 0f;
+            
+            // 基础伤害分数
+            score += weapon.Damage * 0.5f;
+            
+            // 攻击速度分数
+            score += weapon.AttackSpeed * 10f;
+            
+            // 根据目标距离评估武器
+            if (target != null)
+            {
+                float distance = Vector2.Distance(transform.position, target.transform.position);
+                
+                if (weapon.WeaponType == WeaponType.Ranged)
+                {
+                    // 远程武器在远距离加分
+                    if (distance > 5f)
+                    {
+                        score += 30f;
+                    }
+                    // 检查弹药
+                    if (ammoManager != null && weapon.RequiredAmmo != AmmoType.None)
+                    {
+                        int ammoCount = ammoManager.GetAmmo(weapon.RequiredAmmo);
+                        if (ammoCount == 0)
+                        {
+                            score = 0f; // 没弹药就不用了
+                        }
+                        else
+                        {
+                            score += Mathf.Min(ammoCount, 20); // 弹药充足加分
+                        }
+                    }
+                }
+                else if (weapon.WeaponType == WeaponType.Melee)
+                {
+                    // 近战武器在近距离加分
+                    if (distance < 3f)
+                    {
+                        score += 20f;
+                    }
+                    // 近战武器的攻击范围加分
+                    score += weapon.AttackRange * 5f;
+                }
+                else if (weapon.WeaponType == WeaponType.Magic)
+                {
+                    // 魔法武器在中距离加分
+                    if (distance > 3f && distance < 8f)
+                    {
+                        score += 25f;
+                    }
+                    // 范围攻击加分
+                    if (weapon.AttackShape != AttackShape.Line)
+                    {
+                        score += 15f;
+                    }
+                }
+            }
+            
+            // 特殊效果加分
+            if (weapon.OnHitDebuffs != null && weapon.OnHitDebuffs.Count > 0)
+            {
+                score += 10f * weapon.OnHitDebuffs.Count;
+            }
+            
+            return score;
+        }
+        
         // 通信控制
         public void SendCommunication(CommunicationType type)
         {
@@ -327,6 +527,66 @@ namespace AI.Core
             
             communicator.SendMessage(type, transform.position);
             nextCommunicationTime = Time.time + communicationCooldown;
+        }
+        
+        // 面对面交流
+        public void TryFaceToFaceInteraction()
+        {
+            if (Time.time < lastFaceToFaceTime + faceToFaceCooldown || aiStats.IsDead) return;
+            
+            // 寻找附近的其他AI
+            var nearbyAIs = Physics2D.OverlapCircleAll(transform.position, faceToFaceRange)
+                .Select(c => c.GetComponent<AIStats>())
+                .Where(ai => ai != null && ai != aiStats && !ai.IsDead)
+                .ToArray();
+                
+            if (nearbyAIs.Length > 0)
+            {
+                // 选择最近的AI进行交流
+                var targetAI = nearbyAIs.OrderBy(ai => Vector2.Distance(transform.position, ai.transform.position)).First();
+                
+                // 互相面对
+                Vector2 direction = (targetAI.transform.position - transform.position).normalized;
+                if (animController != null)
+                {
+                    animController.SetFacing(direction.x > 0);
+                }
+                
+                // 触发面对面交流
+                aiStats.TriggerFaceToFaceInteraction(true); // 说话方
+                targetAI.TriggerFaceToFaceInteraction(false); // 倾听方
+                
+                // 发送房间内声音
+                SendRoomSound($"{name} 正在与 {targetAI.name} 交谈");
+                
+                lastFaceToFaceTime = Time.time;
+                Debug.Log($"[AI] {name} 与 {targetAI.name} 进行了面对面交流");
+            }
+        }
+        
+        // 房间内声音系统
+        private void SendRoomSound(string message)
+        {
+            // 获取当前房间
+            var mapGenerator = FindObjectOfType<MapGenerator>();
+            if (mapGenerator == null) return;
+            
+            var currentRoom = mapGenerator.GetCurrentRoom(transform.position);
+            if (currentRoom == null) return;
+            
+            // 通知同房间内的所有AI
+            var roomBounds = currentRoom.GetComponent<Collider2D>()?.bounds ?? new Bounds(currentRoom.transform.position, Vector3.one * 16f);
+            var aisInRoom = Physics2D.OverlapBoxAll(roomBounds.center, roomBounds.size, 0f)
+                .Select(c => c.GetComponent<AIStats>())
+                .Where(ai => ai != null && ai != aiStats)
+                .ToArray();
+                
+            foreach (var ai in aisInRoom)
+            {
+                // AI听到声音，轻微改善心情
+                ai.TriggerCommunicatorInteraction();
+                Debug.Log($"[AI] {ai.name} 听到了: {message}");
+            }
         }
         
         // 优先级设置
@@ -379,7 +639,13 @@ namespace AI.Core
         {
             if (other.CompareTag("Pickup"))
             {
-                collectedItemThisFrame = true;
+                // 尝试拾取物品
+                var pickup = other.GetComponent<Loot.UnifiedPickup>();
+                if (pickup != null)
+                {
+                    pickup.Interact(gameObject);
+                    collectedItemThisFrame = true;
+                }
             }
         }
         

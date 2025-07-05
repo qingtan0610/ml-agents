@@ -18,7 +18,6 @@ namespace AI.Core
     {
         [Header("Core Components")]
         [SerializeField] private AIStats aiStats;
-        [SerializeField] private AIMood aiMood;
         [SerializeField] private Inventory.Inventory inventory;
         [SerializeField] private AIPerception perception;
         [SerializeField] private AIController controller;
@@ -48,7 +47,6 @@ namespace AI.Core
             
             // 获取组件
             if (aiStats == null) aiStats = GetComponent<AIStats>();
-            if (aiMood == null) aiMood = GetComponent<AIMood>();
             if (inventory == null) inventory = GetComponent<Inventory.Inventory>();
             if (perception == null) perception = GetComponent<AIPerception>();
             if (controller == null) controller = GetComponent<AIController>();
@@ -80,9 +78,9 @@ namespace AI.Core
             sensor.AddObservation(aiStats.CurrentHunger / aiStats.Config.maxHunger);
             sensor.AddObservation(aiStats.CurrentThirst / aiStats.Config.maxThirst);
             sensor.AddObservation(aiStats.CurrentStamina / aiStats.Config.maxStamina);
-            sensor.AddObservation(aiMood.EmotionalState);
-            sensor.AddObservation(aiMood.SocialState);
-            sensor.AddObservation(aiMood.MentalState);
+            sensor.AddObservation(aiStats.GetMood(MoodDimension.Emotion) / 100f);
+            sensor.AddObservation(aiStats.GetMood(MoodDimension.Social) / 100f);
+            sensor.AddObservation(aiStats.GetMood(MoodDimension.Mentality) / 100f);
             
             // 2. 背包状态 (3个值)
             int itemCount = 0;
@@ -149,9 +147,10 @@ namespace AI.Core
         {
             // 离散动作空间
             int moveAction = actions.DiscreteActions[0]; // 0-4: 不动、上下左右
-            int interactAction = actions.DiscreteActions[1]; // 0-1: 不交互、交互
+            int interactAction = actions.DiscreteActions[1]; // 0-2: 不交互、物品交互、面对面交流
             int itemAction = actions.DiscreteActions[2]; // 0-10: 不使用、使用物品槽1-10
             int communicateAction = actions.DiscreteActions[3]; // 0-6: 不通信、发送各种消息
+            int combatAction = actions.DiscreteActions[4]; // 0-2: 不攻击、攻击、切换武器
             
             // 执行移动
             Vector2 moveDirection = Vector2.zero;
@@ -169,6 +168,10 @@ namespace AI.Core
             {
                 controller.TryInteract();
             }
+            else if (interactAction == 2)
+            {
+                controller.TryFaceToFaceInteraction();
+            }
             
             // 使用物品
             if (itemAction > 0 && itemAction <= inventory.Size)
@@ -180,6 +183,27 @@ namespace AI.Core
             if (communicateAction > 0)
             {
                 controller.SendCommunication((CommunicationType)(communicateAction - 1));
+            }
+            
+            // 战斗行动
+            if (combatAction > 0)
+            {
+                var nearbyEnemies = perception.GetNearbyEnemies();
+                if (nearbyEnemies.Count > 0)
+                {
+                    var target = nearbyEnemies[0]; // 选择最近的敌人
+                    
+                    if (combatAction == 1)
+                    {
+                        // 攻击
+                        controller.Attack(target.gameObject);
+                    }
+                    else if (combatAction == 2)
+                    {
+                        // 切换到最佳武器
+                        controller.SelectBestWeapon(target.gameObject);
+                    }
+                }
             }
             
             // 计算奖励
@@ -229,7 +253,9 @@ namespace AI.Core
             }
             
             // 心情奖励
-            float moodBonus = (aiMood.EmotionalState + aiMood.SocialState + aiMood.MentalState) / 3f;
+            float moodBonus = (aiStats.GetMood(MoodDimension.Emotion) + 
+                              aiStats.GetMood(MoodDimension.Social) + 
+                              aiStats.GetMood(MoodDimension.Mentality)) / 300f; // 归一化到-1到1
             reward += moodBonus * 0.05f;
             
             AddReward(reward);
@@ -315,7 +341,6 @@ namespace AI.Core
             return new AIDecisionContext
             {
                 Stats = aiStats,
-                Mood = aiMood,
                 Inventory = inventory,
                 VisibleRooms = perception.GetVisibleRooms(),
                 NearbyEnemies = perception.GetNearbyEnemies(),

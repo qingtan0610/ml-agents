@@ -362,5 +362,13 @@ namespace NPC.Types
             // TODO: 实现护甲修理服务
             Debug.Log($"Repairing armor: {armorItem.ItemName}");
         }
+        
+        /// <summary>
+        /// 处理AI请求
+        /// </summary>
+        public bool HandleAIRequest(string request, GameObject ai)
+        {
+            return AI.NPCAIInteractionHandler.HandleTailorAIInteraction(this, ai, request);
+        }
     }
 }

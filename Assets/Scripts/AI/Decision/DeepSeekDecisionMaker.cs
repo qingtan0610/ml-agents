@@ -68,9 +68,12 @@ namespace AI.Decision
             
             // 心情状态
             sb.AppendLine("【心情状态】");
-            sb.AppendLine($"- 情绪: {context.Mood.EmotionalState:F2} (沮丧 <-> 开心)");
-            sb.AppendLine($"- 社交: {context.Mood.SocialState:F2} (孤独 <-> 温暖)");
-            sb.AppendLine($"- 心态: {context.Mood.MentalState:F2} (急躁 <-> 平静)");
+            var emotionValue = context.Stats.GetMood(MoodDimension.Emotion);
+            var socialValue = context.Stats.GetMood(MoodDimension.Social);
+            var mentalValue = context.Stats.GetMood(MoodDimension.Mentality);
+            sb.AppendLine($"- 情绪: {emotionValue:F2} (沮丧 <-> 开心)");
+            sb.AppendLine($"- 社交: {socialValue:F2} (孤独 <-> 温暖)");
+            sb.AppendLine($"- 心态: {mentalValue:F2} (急躁 <-> 平静)");
             sb.AppendLine();
             
             // 环境信息
@@ -147,7 +150,7 @@ namespace AI.Decision
                 decision.Explanation = "需要补充食物或水分";
             }
             // 社交需求
-            else if (context.Mood.SocialState < -0.5f)
+            else if (context.Stats.GetMood(AI.Stats.MoodDimension.Social) < -50f)
             {
                 decision.RecommendedState = AIState.Communicating;
                 decision.Priority = AIActionPriority.Normal;
@@ -230,7 +233,6 @@ namespace AI.Decision
     public class AIDecisionContext
     {
         public AIStats Stats;
-        public AIMood Mood;
         public Inventory.Inventory Inventory;
         public List<RoomInfo> VisibleRooms;
         public List<Enemy.Enemy2D> NearbyEnemies;

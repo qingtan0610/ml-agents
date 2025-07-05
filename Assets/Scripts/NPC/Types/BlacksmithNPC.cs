@@ -458,5 +458,13 @@ namespace NPC.Types
                 currentUI = null;
             }
         }
+        
+        /// <summary>
+        /// 处理AI请求
+        /// </summary>
+        public bool HandleAIRequest(string request, GameObject ai)
+        {
+            return AI.NPCAIInteractionHandler.HandleBlacksmithAIInteraction(this, ai, request);
+        }
     }
 }

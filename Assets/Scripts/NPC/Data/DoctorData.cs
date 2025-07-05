@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections.Generic;
 using Inventory.Items;
+using AI.Stats;
 
 namespace NPC.Data
 {
@@ -66,7 +67,7 @@ namespace NPC.Data
         
         [Header("Immunity")]
         public bool providesImmunity = false;
-        public AI.Stats.StatType immunityType;  // 免疫类型
+        public StatType immunityType;  // 免疫类型
         public float immunityDuration = 300f;  // 免疫持续时间
         
         [Header("Pricing")]

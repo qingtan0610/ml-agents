@@ -15,7 +15,7 @@ GameObject:
   - component: {fileID: 6612215855683985562}
   m_Layer: 0
   m_Name: UnifiedPickup
-  m_TagString: Untagged
+  m_TagString: Pickup
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -50,9 +50,10 @@ MonoBehaviour:
   pickupRange: 1.5
   magnetRange: 3
   magnetSpeed: 5
-  autoPickup: 1
   bobHeight: 0.2
   bobSpeed: 2
+  requiresInteraction: 0
+  interactionPrompt: {fileID: 0}
   item: {fileID: 0}
   quantity: 1
   spriteRenderer: {fileID: 0}

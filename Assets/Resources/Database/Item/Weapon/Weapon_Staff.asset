@@ -30,13 +30,13 @@ MonoBehaviour:
   attackRange: 10
   projectileSpeed: 10
   attackShape: 3
-  effectRadius: 1
+  effectRadius: 5
   sectorAngle: 90
   rectangleWidth: 2
   requiredAmmo: 3
   ammoPerShot: 1
   attackAnimation: Attack
-  knockback: 0
+  knockback: 4
   criticalChance: 0.05
   criticalMultiplier: 2
   isPiercing: 0

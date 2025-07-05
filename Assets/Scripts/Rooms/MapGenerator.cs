@@ -851,6 +851,25 @@ namespace Rooms
             return roomGrid[x, y];
         }
         
+        /// <summary>
+        /// 根据世界坐标获取当前房间
+        /// </summary>
+        public SimplifiedRoom GetCurrentRoom(Vector3 worldPosition)
+        {
+            var coord = GetRoomCoordinate(worldPosition);
+            return GetRoomAt(coord.x, coord.y);
+        }
+        
+        /// <summary>
+        /// 生成新地图（用于传送装置）
+        /// </summary>
+        public void GenerateNewMap()
+        {
+            Debug.Log("[MapGenerator] Generating new map for next level");
+            TeleportToNextLevel();
+        }
+        
+        
         private void OnDrawGizmos()
         {
             if (roomGrid == null) return;

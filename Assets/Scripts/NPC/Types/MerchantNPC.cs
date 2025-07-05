@@ -193,7 +193,7 @@ namespace NPC.Types
         }
         
         // 辅助方法
-        private float GetItemPrice(RuntimeShopInventory.RuntimeShopItem runtimeItem)
+        public float GetItemPrice(RuntimeShopInventory.RuntimeShopItem runtimeItem)
         {
             if (runtimeItem.priceOverride > 0)
             {
@@ -284,5 +284,19 @@ namespace NPC.Types
         /// 获取商人ID
         /// </summary>
         public string GetMerchantId() => merchantId;
+        
+        /// <summary>
+        /// 获取运行时库存（供AI交互使用）
+        /// </summary>
+        public RuntimeShopInventory GetRuntimeInventory() => runtimeInventory;
+        
+        
+        /// <summary>
+        /// 处理AI请求
+        /// </summary>
+        public bool HandleAIRequest(string request, GameObject ai)
+        {
+            return AI.NPCAIInteractionHandler.HandleMerchantAIInteraction(this, ai, request);
+        }
     }
 }

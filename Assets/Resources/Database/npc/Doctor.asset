@@ -44,6 +44,9 @@ MonoBehaviour:
     minPlayerLevel: 0
     requiresItem: 0
     requiredItem: {fileID: 0}
+  randomizeServices: 1
+  minServices: 1
+  maxServices: 4
   medicineShop:
     items:
     - item: {fileID: 11400000, guid: 92529d71f5efb6745bf1bd542c772fa1, type: 2}
@@ -51,6 +54,9 @@ MonoBehaviour:
       restockAmount: 5
       priceOverride: 0
       isDailyDeal: 1
+  randomizeMedicine: 1
+  minMedicineTypes: 1
+  maxMedicineTypes: 6
   servicePriceMultiplier: 1
   medicinePriceMultiplier: 1.2
   providesEmergencyCare: 1

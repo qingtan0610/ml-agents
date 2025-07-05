@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using AI.Stats;
 
 namespace NPC.Data
 {
@@ -68,8 +69,8 @@ namespace NPC.Data
     {
         public string buffName = "饱腹感";
         public float duration = 300f;  // 持续时间（秒）
-        public AI.Stats.StatType affectedStat;
+        public StatType affectedStat;
         public float effectValue = 10f;
-        public AI.Stats.StatModifierType modifierType;
+        public StatModifierType modifierType;
     }
 }

@@ -48,6 +48,9 @@ MonoBehaviour:
     isSpecialDish: 0
     foodModelPrefab: {fileID: 0}
     eatingAnimation: 
+  randomizeMenu: 1
+  minDishes: 1
+  maxDishes: 6
   eatingDuration: 3
   provideFreeWater: 1
   waterRestoreAmount: 50

@@ -30,6 +30,9 @@ MonoBehaviour:
   interactionSound: {fileID: 0}
   farewellSound: {fileID: 0}
   recipes: []
+  randomizeRecipes: 1
+  minRecipes: 1
+  maxRecipes: 5
   upgradeOptions:
   - upgradeName: upgrade one
     description: "\u5347\u7EA7\u4E00\u7EA7"
@@ -37,7 +40,7 @@ MonoBehaviour:
     attackSpeedIncrease: 0.5
     rangeIncrease: 1
     critChanceIncrease: 0
-    minUpgradeLevel: 1
+    minUpgradeLevel: 0
     maxUpgradeLevel: 1
     requiredMaterials: []
     baseUpgradeFee: 100
@@ -46,6 +49,9 @@ MonoBehaviour:
     baseSuccessRate: 100
     decreaseRateWithLevel: 0
     successRateDecrease: 0
+  randomizeUpgrades: 1
+  minUpgradeTypes: 1
+  maxUpgradeTypes: 3
   craftingPriceMultiplier: 1
   upgradePriceMultiplier: 1.5
   canRepairWeapons: 1

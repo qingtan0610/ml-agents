@@ -25,6 +25,7 @@ namespace AI.Stats
         [SerializeField] private bool isDead = false;
         [SerializeField] private bool isMoving = false;
         [SerializeField] private float timeSinceSpawn = 0f;
+        private StatType? lastDeathCause = null;
         
         // Events - 确保事件被正确初始化
         public StatChangeEvent OnStatChanged = new StatChangeEvent();
@@ -187,6 +188,7 @@ namespace AI.Stats
         {
             Debug.Log($"[AIStats] Die() called - Setting isDead=true, cause={cause}");
             isDead = true;
+            lastDeathCause = cause;
             
             Debug.Log($"[AIStats] Invoking OnDeath event (event exists: {OnDeath != null})");
             OnDeath?.Invoke(new AIDeathEventArgs(cause, transform.position, timeSinceSpawn));
@@ -233,13 +235,66 @@ namespace AI.Stats
             Debug.Log($"[AIStats] Respawned with Health: {currentStats[StatType.Health]}, IsDead: {isDead}");
             
             // 根据死亡原因应用惩罚
-            if (applyPenalties)
+            if (applyPenalties && lastDeathCause.HasValue)
             {
-                // 这里预留给背包系统处理物品清空逻辑
+                ApplyDeathPenalty(lastDeathCause.Value);
+                lastDeathCause = null;
             }
             
             timeSinceSpawn = 0f;
             OnRespawn?.Invoke();
+        }
+        
+        private void ApplyDeathPenalty(StatType deathCause)
+        {
+            Debug.Log($"[AIStats] Applying death penalty for cause: {deathCause}");
+            
+            var inventory = GetComponent<Inventory.Inventory>();
+            var currencyManager = GetComponent<Inventory.Managers.CurrencyManager>();
+            var ammoManager = GetComponent<Inventory.Managers.AmmoManager>();
+            
+            switch (deathCause)
+            {
+                case StatType.Health:
+                    // 生命归零：清空所有物品（背包、金币、弹药）
+                    Debug.Log("[AIStats] Death by health loss - clearing all items");
+                    if (inventory != null) inventory.DropAllItems();
+                    if (currencyManager != null) currencyManager.SpendGold(currencyManager.CurrentGold);
+                    if (ammoManager != null)
+                    {
+                        ammoManager.UseAmmo(Inventory.AmmoType.Bullets, ammoManager.GetAmmo(Inventory.AmmoType.Bullets));
+                        ammoManager.UseAmmo(Inventory.AmmoType.Arrows, ammoManager.GetAmmo(Inventory.AmmoType.Arrows));
+                        ammoManager.UseAmmo(Inventory.AmmoType.Mana, ammoManager.GetAmmo(Inventory.AmmoType.Mana));
+                    }
+                    break;
+                    
+                case StatType.Hunger:
+                    // 饥饿归零：只清空金币
+                    Debug.Log("[AIStats] Death by hunger - clearing gold");
+                    if (currencyManager != null) currencyManager.SpendGold(currencyManager.CurrentGold);
+                    break;
+                    
+                case StatType.Thirst:
+                    // 口渴归零：只清空药水类物品
+                    Debug.Log("[AIStats] Death by thirst - clearing potions");
+                    if (inventory != null)
+                    {
+                        for (int i = 0; i < inventory.Size; i++)
+                        {
+                            var slot = inventory.GetSlot(i);
+                            if (!slot.IsEmpty && slot.Item is Inventory.Items.ConsumableItem consumable)
+                            {
+                                // 通过名称判断是否是药水或饮料
+                                if (slot.Item.ItemName.Contains("药水") || slot.Item.ItemName.Contains("饮料") ||
+                                    slot.Item.ItemName.ToLower().Contains("potion") || slot.Item.ItemName.ToLower().Contains("drink"))
+                                {
+                                    inventory.RemoveItemAt(i, slot.Quantity);
+                                }
+                            }
+                        }
+                    }
+                    break;
+            }
         }
         
         #region Stat Access Methods
