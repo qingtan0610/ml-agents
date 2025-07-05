@@ -128,6 +128,19 @@ namespace AI.Core
             ProcessEvent(eventMemory);
         }
         
+        // 记录事件（简化版本）
+        public void RecordEvent(string eventType, string description)
+        {
+            AddEvent(new EventMemory
+            {
+                EventType = EventType.Other,
+                Description = $"{eventType}: {description}",
+                Position = Vector2.zero,
+                Time = Time.time,
+                Importance = 2
+            });
+        }
+        
         private void ProcessEvent(EventMemory eventMemory)
         {
             switch (eventMemory.EventType)
@@ -408,7 +421,8 @@ namespace AI.Core
         ResourceFound,
         Communication,
         Trade,
-        Upgrade
+        Upgrade,
+        Other
     }
     
     public enum ResourceType

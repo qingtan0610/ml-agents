@@ -26,6 +26,8 @@ namespace AI.Core
         [SerializeField] private float decisionInterval = 0.5f;
         [SerializeField] private bool useDeepSeekAPI = false;
         [SerializeField] private float deepSeekThreshold = 0.3f; // 当AI健康度低于此值时调用DeepSeek
+        [SerializeField] private float deepSeekCooldown = 10f;   // DeepSeek调用冷却时间
+        private float lastDeepSeekTime = -10f;
         
         [Header("Current State")]
         [SerializeField] private AIState currentState = AIState.Exploring;
@@ -317,14 +319,26 @@ namespace AI.Core
         
         private bool ShouldUseDeepSeek()
         {
+            // 检查冷却时间
+            if (Time.time - lastDeepSeekTime < deepSeekCooldown)
+                return false;
+            
             // 在关键时刻使用DeepSeek API
             float healthPercent = aiStats.CurrentHealth / aiStats.Config.maxHealth;
             float resourcePercent = (aiStats.CurrentHunger + aiStats.CurrentThirst) / 
                                   (aiStats.Config.maxHunger + aiStats.Config.maxThirst);
             
-            return healthPercent < deepSeekThreshold || 
-                   resourcePercent < deepSeekThreshold ||
-                   currentState == AIState.Critical;
+            bool shouldUse = healthPercent < deepSeekThreshold || 
+                            resourcePercent < deepSeekThreshold ||
+                            currentState == AIState.Critical ||
+                            perception.GetNearbyEnemies().Count >= 3;  // 被多个敌人包围
+            
+            if (shouldUse)
+            {
+                lastDeepSeekTime = Time.time;
+            }
+            
+            return shouldUse;
         }
         
         private void RequestDeepSeekDecision()
@@ -357,7 +371,17 @@ namespace AI.Core
             {
                 currentState = decision.RecommendedState;
                 controller.SetPriority(decision.Priority);
+                
+                // 让AIController执行具体的决策行动
+                controller.ApplyDeepSeekDecision(decision);
+                
                 Debug.Log($"[AIBrain] DeepSeek建议: {decision.Explanation}");
+                
+                // 记录决策到内存
+                if (memory != null)
+                {
+                    memory.RecordEvent("DeepSeekDecision", decision.RecommendedState.ToString());
+                }
             }
         }
     }

@@ -2,6 +2,7 @@ using UnityEngine;
 using System.Collections;
 using System.Linq;
 using AI.Stats;
+using AI.Decision;
 using Inventory;
 using Inventory.Items;
 using Inventory.Managers;
@@ -61,6 +62,10 @@ namespace AI.Core
         // 当前目标
         private GameObject currentTarget;
         private AIActionPriority currentPriority = AIActionPriority.Normal;
+        
+        // DeepSeek决策
+        private AIDecision currentDeepSeekDecision;
+        private float lastDecisionTime = -10f;
         
         // 面对面交流
         private float faceToFaceRange = 2f;
@@ -146,6 +151,20 @@ namespace AI.Core
             {
                 // 动画控制器会自动检测停止
             }
+        }
+        
+        // 设置移动方向
+        public void SetMoveDirection(float x, float y)
+        {
+            Move(new Vector2(x, y));
+        }
+        
+        // 设置移动目标
+        public void SetMoveTarget(Vector2 targetPosition)
+        {
+            // 计算方向并移动
+            Vector2 direction = (targetPosition - (Vector2)transform.position).normalized;
+            Move(direction);
         }
         
         // 战斗控制
@@ -297,7 +316,7 @@ namespace AI.Core
             if (merchantNPC == null) return true;
             
             // 检查是否需要购买补给品
-            if (currencyManager.CurrentGold > 50)
+            if (currencyManager != null && currencyManager.CurrentGold > 50)
             {
                 // 需要补充生命
                 if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f)
@@ -327,7 +346,7 @@ namespace AI.Core
             var doctorNPC = doctor as NPC.Types.DoctorNPC;
             if (doctorNPC == null) return true;
             
-            if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f && currencyManager.CurrentGold > 50)
+            if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f && currencyManager != null && currencyManager.CurrentGold > 50)
             {
                 doctorNPC.HandleAIRequest("heal", gameObject);
                 return true;
@@ -348,7 +367,7 @@ namespace AI.Core
                 return true;
             }
             // 饥饿且有钱
-            else if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f && currencyManager.CurrentGold > 10)
+            else if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f && currencyManager != null && currencyManager.CurrentGold > 10)
             {
                 restaurantNPC.HandleAIRequest("food", gameObject);
                 return true;
@@ -362,7 +381,7 @@ namespace AI.Core
             var blacksmithNPC = blacksmith as NPC.Types.BlacksmithNPC;
             if (blacksmithNPC == null) return true;
             
-            if (inventory.EquippedWeapon != null && currencyManager.CurrentGold > 200)
+            if (inventory != null && inventory.EquippedWeapon != null && currencyManager != null && currencyManager.CurrentGold > 200)
             {
                 blacksmithNPC.HandleAIRequest("upgrade_weapon", gameObject);
                 return true;
@@ -375,6 +394,8 @@ namespace AI.Core
             // AI背包扩容决策
             var tailorNPC = tailor as NPC.Types.TailorNPC;
             if (tailorNPC == null) return true;
+            
+            if (inventory == null || currencyManager == null) return false;
             
             int usedSlots = 0;
             for (int i = 0; i < inventory.Size; i++)
@@ -589,6 +610,12 @@ namespace AI.Core
             }
         }
         
+        // 尝试切换到最佳武器
+        public void TrySwitchBestWeapon()
+        {
+            SelectBestWeapon(currentTarget);
+        }
+        
         // 优先级设置
         public void SetPriority(AIActionPriority priority)
         {
@@ -645,6 +672,240 @@ namespace AI.Core
                 {
                     pickup.Interact(gameObject);
                     collectedItemThisFrame = true;
+                }
+            }
+        }
+        
+        // 接收DeepSeek决策
+        public void ApplyDeepSeekDecision(AIDecision decision)
+        {
+            if (decision == null) return;
+            
+            currentDeepSeekDecision = decision;
+            lastDecisionTime = Time.time;
+            currentPriority = decision.Priority;
+            
+            Debug.Log($"[AIController] 应用DeepSeek决策: {decision.RecommendedState} - {decision.Explanation}");
+            
+            // 根据决策状态执行不同行为
+            ExecuteDecisionActions(decision);
+        }
+        
+        private void ExecuteDecisionActions(AIDecision decision)
+        {
+            var brain = GetComponent<AIBrain>();
+            if (brain == null) return;
+            
+            switch (decision.RecommendedState)
+            {
+                case AIState.Critical:
+                    // 危急状态 - 紧急求救并寻找补给
+                    SendCommunication(CommunicationType.Help);
+                    // 使用恢复物品
+                    UseHealthItems();
+                    UseFoodItems();
+                    UseWaterItems();
+                    break;
+                    
+                case AIState.Fleeing:
+                    // 逃跑状态 - 远离威胁
+                    if (currentTarget != null && currentTarget.CompareTag("Enemy"))
+                    {
+                        Vector2 awayDirection = (transform.position - currentTarget.transform.position).normalized;
+                        SetMoveDirection(awayDirection.x, awayDirection.y);
+                        currentPriority = AIActionPriority.Survival;
+                    }
+                    break;
+                    
+                case AIState.Seeking:
+                    // 寻找资源 - 主动寻找NPC和补给
+                    // 优先寻找记忆中的资源点
+                    var communicator = GetComponent<AICommunicator>();
+                    if (communicator != null)
+                    {
+                        // 检查最近的水源消息
+                        var waterMsg = communicator.GetLatestMessage(CommunicationType.FoundWater);
+                        if (waterMsg != null)
+                        {
+                            SetMoveTarget(waterMsg.Position);
+                        }
+                        // 检查商人消息
+                        var npcMsg = communicator.GetLatestMessage(CommunicationType.FoundNPC);
+                        if (npcMsg != null)
+                        {
+                            SetMoveTarget(npcMsg.Position);
+                        }
+                    }
+                    break;
+                    
+                case AIState.Communicating:
+                    // 社交状态 - 主动寻找其他AI交流
+                    communicator = GetComponent<AICommunicator>();
+                    if (communicator != null)
+                    {
+                        var nearbyAIs = communicator.GetNearbyAIsForTalk();
+                        if (nearbyAIs.Count > 0)
+                        {
+                            // 向最近的AI移动
+                            SetMoveTarget(nearbyAIs[0].transform.position);
+                            // 尝试面对面交流
+                            communicator.TryFaceToFaceTalk();
+                        }
+                    }
+                    break;
+                    
+                case AIState.Fighting:
+                    // 战斗状态 - 积极进攻
+                    if (currentTarget != null && currentTarget.CompareTag("Enemy"))
+                    {
+                        // 选择最佳武器
+                        TrySwitchBestWeapon();
+                        // 保持攻击距离
+                        float idealDistance = GetIdealCombatDistance();
+                        float currentDistance = Vector2.Distance(transform.position, currentTarget.transform.position);
+                        
+                        if (currentDistance > idealDistance)
+                        {
+                            // 靠近目标
+                            Vector2 toTarget = (currentTarget.transform.position - transform.position).normalized;
+                            SetMoveDirection(toTarget.x, toTarget.y);
+                        }
+                        else if (currentDistance < idealDistance * 0.7f)
+                        {
+                            // 保持距离
+                            Vector2 awayFromTarget = (transform.position - currentTarget.transform.position).normalized;
+                            SetMoveDirection(awayFromTarget.x * 0.5f, awayFromTarget.y * 0.5f);
+                        }
+                    }
+                    break;
+                    
+                case AIState.Resting:
+                    // 休息状态 - 停止移动，恢复体力
+                    SetMoveDirection(0, 0);
+                    // 可以在安全的地方休息
+                    break;
+                    
+                case AIState.Exploring:
+                    // 探索状态 - 继续正常探索
+                    // 由ML-Agents控制
+                    break;
+            }
+            
+            // 执行具体行动建议
+            if (decision.SpecificActions != null)
+            {
+                foreach (var action in decision.SpecificActions)
+                {
+                    ExecuteSpecificAction(action);
+                }
+            }
+        }
+        
+        private void ExecuteSpecificAction(string action)
+        {
+            // 根据具体行动建议执行
+            if (action.Contains("使用") || action.Contains("恢复"))
+            {
+                UseHealthItems();
+                UseFoodItems();
+                UseWaterItems();
+            }
+            else if (action.Contains("求救"))
+            {
+                SendCommunication(CommunicationType.Help);
+            }
+            else if (action.Contains("交流"))
+            {
+                var communicator = GetComponent<AICommunicator>();
+                if (communicator != null)
+                {
+                    communicator.TryFaceToFaceTalk();
+                }
+            }
+            else if (action.Contains("商人") || action.Contains("NPC"))
+            {
+                // 寻找NPC
+                var communicator = GetComponent<AICommunicator>();
+                if (communicator != null)
+                {
+                    var npcMsg = communicator.GetLatestMessage(CommunicationType.FoundNPC);
+                    if (npcMsg != null)
+                    {
+                        SetMoveTarget(npcMsg.Position);
+                    }
+                }
+            }
+        }
+        
+        private float GetIdealCombatDistance()
+        {
+            var weapon = inventory.EquippedWeapon;
+            if (weapon != null)
+            {
+                switch (weapon.WeaponType)
+                {
+                    case WeaponType.Melee:
+                        return weapon.AttackRange * 0.8f;
+                    case WeaponType.Ranged:
+                        return 6f;
+                    case WeaponType.Magic:
+                        return 4f;
+                }
+            }
+            return 2f;
+        }
+        
+        // 使用恢复物品
+        private void UseHealthItems()
+        {
+            for (int i = 0; i < inventory.Size; i++)
+            {
+                var slot = inventory.GetSlot(i);
+                if (!slot.IsEmpty && slot.Item is ConsumableItem consumable)
+                {
+                    if (consumable.ItemName.Contains("生命") || consumable.ItemName.Contains("Health"))
+                    {
+                        inventory.UseItem(i);
+                        break;
+                    }
+                }
+            }
+        }
+        
+        private void UseFoodItems()
+        {
+            if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.5f)
+            {
+                for (int i = 0; i < inventory.Size; i++)
+                {
+                    var slot = inventory.GetSlot(i);
+                    if (!slot.IsEmpty && slot.Item is ConsumableItem consumable)
+                    {
+                        if (consumable.ItemName.Contains("食") || consumable.ItemName.Contains("Food"))
+                        {
+                            inventory.UseItem(i);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        private void UseWaterItems()
+        {
+            if (aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.5f)
+            {
+                for (int i = 0; i < inventory.Size; i++)
+                {
+                    var slot = inventory.GetSlot(i);
+                    if (!slot.IsEmpty && slot.Item is ConsumableItem consumable)
+                    {
+                        if (consumable.ItemName.Contains("水") || consumable.ItemName.Contains("Water"))
+                        {
+                            inventory.UseItem(i);
+                            break;
+                        }
+                    }
                 }
             }
         }

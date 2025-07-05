@@ -461,6 +461,17 @@ namespace AI.Stats
             mood.OnFaceToFaceInteraction(isTalking);
         }
         
+        public void ModifyMood(MoodDimension dimension, float amount, StatChangeReason reason = StatChangeReason.Other)
+        {
+            switch (dimension)
+            {
+                case MoodDimension.Social:
+                    mood.ImproveSocial(amount);
+                    break;
+                // 可以扩展其他维度的修改方法
+            }
+        }
+        
         #endregion
         
         #region Helper Methods

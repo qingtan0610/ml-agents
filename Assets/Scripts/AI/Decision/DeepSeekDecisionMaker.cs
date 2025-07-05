@@ -12,43 +12,32 @@ namespace AI.Decision
     /// </summary>
     public class DeepSeekDecisionMaker
     {
-        private const string API_ENDPOINT = "https://api.deepseek.com/v1/chat/completions";
-        private string apiKey;
-        
-        // 决策回调
-        public delegate void DecisionCallback(AIDecision decision);
-        
-        public DeepSeekDecisionMaker()
-        {
-            // 从配置或环境变量读取API密钥
-            apiKey = PlayerPrefs.GetString("DeepSeekAPIKey", "");
-            if (string.IsNullOrEmpty(apiKey))
-            {
-                Debug.LogWarning("[DeepSeek] API密钥未设置，DeepSeek决策将不可用");
-            }
-        }
+        private bool useRealAPI = true;  // 是否使用真实API
         
         /// <summary>
         /// 请求AI决策
         /// </summary>
-        public void RequestDecision(AIDecisionContext context, DecisionCallback callback)
+        public void RequestDecision(AIDecisionContext context, System.Action<AIDecision> callback)
         {
-            if (string.IsNullOrEmpty(apiKey))
+            if (useRealAPI && DeepSeekAPIClient.Instance != null)
             {
-                Debug.LogWarning("[DeepSeek] 无法请求决策：API密钥未设置");
-                callback?.Invoke(GetDefaultDecision());
-                return;
+                // 使用真实API
+                DeepSeekAPIClient.Instance.RequestDecision(context, callback);
             }
-            
-            // 构建提示词
-            string prompt = BuildPrompt(context);
-            
-            // TODO: 实际API调用实现
-            // 这里需要使用UnityWebRequest或第三方HTTP库
-            Debug.Log($"[DeepSeek] 请求决策，上下文：\n{prompt}");
-            
-            // 模拟返回
-            SimulateAPIResponse(context, callback);
+            else
+            {
+                // 使用模拟决策
+                SimulateAPIResponse(context, callback);
+            }
+        }
+        
+        /// <summary>
+        /// 设置是否使用真实API
+        /// </summary>
+        public void SetUseRealAPI(bool useReal)
+        {
+            useRealAPI = useReal;
+            Debug.Log($"[DeepSeek] 决策模式: {(useReal ? "真实API" : "模拟决策")}");
         }
         
         private string BuildPrompt(AIDecisionContext context)
@@ -118,7 +107,7 @@ namespace AI.Decision
             return types;
         }
         
-        private void SimulateAPIResponse(AIDecisionContext context, DecisionCallback callback)
+        private void SimulateAPIResponse(AIDecisionContext context, System.Action<AIDecision> callback)
         {
             // 模拟智能决策
             AIDecision decision = new AIDecision();

@@ -18,6 +18,9 @@ namespace AI.Core
         [SerializeField] private AudioSource audioSource;
         [SerializeField] private List<AudioClip> communicationSounds;
         
+        [Header("DeepSeek Integration")]
+        [SerializeField] private bool useDeepSeekForDialogue = false;
+        
         // 所有AI通信器的静态列表
         private static List<AICommunicator> allCommunicators = new List<AICommunicator>();
         
@@ -97,8 +100,29 @@ namespace AI.Core
             var facingAI = FindFacingAI();
             if (facingAI != null)
             {
-                // 双方都获得心情改善
-                float moodImprovement = 0.3f; // 大幅降低孤独
+                // 根据TODO.txt：面对面倾述或者倾听都能大幅度降低孤独
+                float moodImprovement = 30f; // 大幅降低孤独
+                
+                // 获取AI状态组件
+                var myStats = GetComponent<AI.Stats.AIStats>();
+                var otherStats = facingAI.GetComponent<AI.Stats.AIStats>();
+                
+                if (myStats != null)
+                {
+                    myStats.ModifyMood(AI.Stats.MoodDimension.Social, moodImprovement, AI.Stats.StatChangeReason.Interact);
+                }
+                
+                if (otherStats != null)
+                {
+                    otherStats.ModifyMood(AI.Stats.MoodDimension.Social, moodImprovement, AI.Stats.StatChangeReason.Interact);
+                }
+                
+                // 触发对话系统
+                var dialogueSystem = GetComponent<AIDialogueSystem>();
+                if (dialogueSystem != null && useDeepSeekForDialogue)
+                {
+                    dialogueSystem.TryDialogueWithNearbyAI();
+                }
                 
                 OnFaceToFaceTalk?.Invoke(facingAI, moodImprovement);
                 facingAI.OnFaceToFaceTalk?.Invoke(this, moodImprovement);
@@ -106,7 +130,7 @@ namespace AI.Core
                 // 播放交谈声音
                 MakeSound(SoundType.Talk);
                 
-                Debug.Log($"[AICommunicator] {name} 与 {facingAI.name} 面对面交谈");
+                Debug.Log($"[AICommunicator] {name} 与 {facingAI.name} 面对面交谈，大幅改善社交心情");
             }
         }
         
@@ -162,11 +186,11 @@ namespace AI.Core
             // 触发事件
             OnMessageReceived?.Invoke(message);
             
-            // 小幅降低孤独感
-            var aiMood = GetComponent<AI.Stats.AIMood>();
-            if (aiMood != null)
+            // 根据TODO.txt：交互机交流能够极小幅度降低孤独
+            var aiStats = GetComponent<AI.Stats.AIStats>();
+            if (aiStats != null)
             {
-                aiMood.ImproveSocial(0.05f); // 极小幅度改善
+                aiStats.ModifyMood(AI.Stats.MoodDimension.Social, 2f, AI.Stats.StatChangeReason.Interact); // 极小幅度改善
             }
         }
         
@@ -185,10 +209,10 @@ namespace AI.Core
                     // 交谈声音可能吸引注意
                     if (weight > 0.5f) // 距离较近
                     {
-                        var aiMood = GetComponent<AI.Stats.AIMood>();
-                        if (aiMood != null)
+                        var aiStats = GetComponent<AI.Stats.AIStats>();
+                        if (aiStats != null)
                         {
-                            aiMood.ImproveSocial(0.1f * weight); // 根据距离改善心情
+                            aiStats.ModifyMood(AI.Stats.MoodDimension.Social, 5f * weight, AI.Stats.StatChangeReason.Interact); // 根据距离改善心情
                         }
                     }
                     break;
