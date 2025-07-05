@@ -2,6 +2,7 @@ using UnityEngine;
 using NPC.Core;
 using NPC.Data;
 using NPC.Interfaces;
+using NPC.Runtime;
 using NPC.Managers;
 using Inventory;
 using Inventory.Items;
@@ -19,6 +20,8 @@ namespace NPC.Types
         private GameObject currentUI;
         private Coroutine craftingCoroutine;
         private BlacksmithData blacksmithData => npcData as BlacksmithData;
+        private RuntimeBlacksmithServices runtimeServices;
+        private string blacksmithId;
         
         protected override void Awake()
         {
@@ -29,24 +32,49 @@ namespace NPC.Types
             {
                 Debug.LogError($"BlacksmithNPC requires BlacksmithData, but got {npcData.GetType().Name}");
             }
+            
+            // 初始化运行时服务
+            runtimeServices = new RuntimeBlacksmithServices();
+        }
+        
+        protected override void Start()
+        {
+            base.Start();
+            
+            // 生成唯一ID - 基于地图等级和实例索引
+            int mapLevel = GetCurrentMapLevel();
+            int instanceIndex = GetInstanceIndex();
+            blacksmithId = $"{blacksmithData?.npcId ?? "blacksmith"}_map{mapLevel}_inst{instanceIndex}";
+            
+            // 初始化服务
+            if (blacksmithData != null)
+            {
+                float seed = mapLevel * 10000f + instanceIndex;
+                runtimeServices.InitializeRandomized(blacksmithData, seed);
+                
+                // 检查存档
+                var saveData = NPCRuntimeDataManager.Instance.GetNPCData<BlacksmithServicesSaveData>(blacksmithId);
+                if (saveData != null)
+                {
+                    runtimeServices.LoadSaveData(saveData, blacksmithData);
+                }
+            }
+        }
+        
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+            
+            // 保存数据
+            if (runtimeServices != null && blacksmithData != null)
+            {
+                NPCRuntimeDataManager.Instance.SaveNPCData(blacksmithId, runtimeServices.GetSaveData());
+            }
         }
         
         
         protected override void OnInteractionStarted(GameObject interactor)
         {
-            // 确保有默认数据
-            if (blacksmithData != null)
-            {
-                if (blacksmithData.recipes == null || blacksmithData.recipes.Count == 0)
-                {
-                    CreateDefaultRecipes();
-                }
-                if (blacksmithData.upgradeOptions == null || blacksmithData.upgradeOptions.Count == 0)
-                {
-                    CreateDefaultUpgradeOptions();
-                }
-            }
-            
             OpenCraftingMenu(interactor);
         }
         
@@ -79,7 +107,7 @@ namespace NPC.Types
         {
             if (blacksmithData == null) return false;
             
-            CraftingRecipe recipe = FindRecipe(recipeId);
+            CraftingRecipe recipe = runtimeServices.GetRecipe(recipeId);
             if (recipe == null) return false;
             
             var inventory = customer.GetComponent<Inventory.Inventory>();
@@ -116,7 +144,7 @@ namespace NPC.Types
                 return false;
             }
             
-            CraftingRecipe recipe = FindRecipe(recipeId);
+            CraftingRecipe recipe = runtimeServices.GetRecipe(recipeId);
             if (recipe == null) return false;
             
             var inventory = customer.GetComponent<Inventory.Inventory>();
@@ -170,7 +198,10 @@ namespace NPC.Types
             }
             
             // 找到合适的升级选项
-            WeaponUpgrade upgrade = FindSuitableUpgrade(weapon, currentLevel);
+            var availableUpgrades = runtimeServices.GetAvailableUpgrades();
+            WeaponUpgrade upgrade = availableUpgrades.Find(u => 
+                currentLevel >= u.minUpgradeLevel && 
+                currentLevel < u.maxUpgradeLevel);
             if (upgrade == null)
             {
                 ShowDialogue("没有适合这把武器的强化方案。");
@@ -272,12 +303,8 @@ namespace NPC.Types
             Debug.Log($"=== {blacksmithData.npcName}的打造服务 ===");
             Debug.Log($"当前金币: {currencyManager?.CurrentGold ?? 0}");
             
-            if (blacksmithData.recipes == null || blacksmithData.recipes.Count == 0)
-            {
-                CreateDefaultRecipes();
-            }
-            
-            if (blacksmithData.recipes.Count == 0)
+            var availableRecipes = runtimeServices.GetAvailableRecipes();
+            if (availableRecipes.Count == 0)
             {
                 Debug.Log("抱歉，我这里没有可用的打造配方。");
             }
@@ -285,7 +312,7 @@ namespace NPC.Types
             {
                 // 显示可打造的物品
                 Debug.Log("\n【可打造武器】");
-                foreach (var recipe in blacksmithData.recipes)
+                foreach (var recipe in availableRecipes)
                 {
                     bool canCraft = CanCraft(customer, recipe.recipeName);
                     string statusText = canCraft ? " [可打造]" : " [材料不足]";
@@ -325,7 +352,10 @@ namespace NPC.Types
                         Debug.Log($"可以强化到 +{currentLevel + 1} (最高 +{blacksmithData.maxUpgradeLevel})");
                         
                         // 显示强化需求（如果有可用的升级）
-                        var availableUpgrade = FindSuitableUpgrade(equippedWeapon, currentLevel);
+                        var availableUpgrades = runtimeServices.GetAvailableUpgrades();
+                        var availableUpgrade = availableUpgrades.Find(u => 
+                            currentLevel >= u.minUpgradeLevel && 
+                            currentLevel < u.maxUpgradeLevel);
                         if (availableUpgrade != null)
                         {
                             int cost = CalculateUpgradeCost(availableUpgrade, currentLevel);
@@ -353,74 +383,6 @@ namespace NPC.Types
             }
         }
         
-        private CraftingRecipe FindRecipe(string recipeName)
-        {
-            if (blacksmithData == null || blacksmithData.recipes == null) return null;
-            
-            return blacksmithData.recipes.Find(r => r.recipeName == recipeName);
-        }
-        
-        private WeaponUpgrade FindSuitableUpgrade(WeaponItem weapon, int currentLevel)
-        {
-            if (blacksmithData == null) return null;
-            
-            // 如果没有配置升级选项，创建默认的
-            if (blacksmithData.upgradeOptions == null || blacksmithData.upgradeOptions.Count == 0)
-            {
-                CreateDefaultUpgradeOptions();
-            }
-            
-            return blacksmithData.upgradeOptions.Find(u => 
-                currentLevel >= u.minUpgradeLevel && 
-                currentLevel < u.maxUpgradeLevel);
-        }
-        
-        private void CreateDefaultUpgradeOptions()
-        {
-            if (blacksmithData.upgradeOptions == null)
-            {
-                blacksmithData.upgradeOptions = new System.Collections.Generic.List<WeaponUpgrade>();
-            }
-            
-            blacksmithData.upgradeOptions.Add(new WeaponUpgrade
-            {
-                upgradeName = "基础强化",
-                description = "提升武器的基础属性",
-                minUpgradeLevel = 0,
-                maxUpgradeLevel = blacksmithData.maxUpgradeLevel,
-                damageIncrease = 5f,
-                baseUpgradeFee = 100,
-                baseSuccessRate = 0.8f,
-                requiredMaterials = new System.Collections.Generic.List<NPC.Data.CraftingMaterial>()
-            });
-        }
-        
-        private void CreateDefaultRecipes()
-        {
-            if (blacksmithData.recipes == null)
-            {
-                blacksmithData.recipes = new System.Collections.Generic.List<CraftingRecipe>();
-            }
-            
-            // 注意：这里创建的是空配方，因为我们没有武器的引用
-            // 实际使用时应该在Unity编辑器中配置完整的配方数据
-            Debug.LogWarning($"[BlacksmithNPC] No recipes configured for {blacksmithData.npcName}. Please configure recipes in the NPCData asset.");
-        }
-        
-        private WeaponUpgrade CreateDefaultUpgrade(int currentLevel)
-        {
-            return new WeaponUpgrade
-            {
-                upgradeName = $"武器强化 +{currentLevel + 1}",
-                description = "提升武器的基础属性",
-                minUpgradeLevel = 0,
-                maxUpgradeLevel = blacksmithData.maxUpgradeLevel,
-                damageIncrease = 5f,
-                baseUpgradeFee = 100,
-                baseSuccessRate = 0.8f,
-                requiredMaterials = new System.Collections.Generic.List<NPC.Data.CraftingMaterial>()
-            };
-        }
         
         private bool CanAffordUpgrade(GameObject customer, WeaponUpgrade upgrade, int currentLevel)
         {

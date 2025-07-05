@@ -9,6 +9,11 @@ namespace NPC.Data
         [Header("Restaurant Menu")]
         public List<FoodMenuItem> menu = new List<FoodMenuItem>();
         
+        [Header("Menu Randomization")]
+        public bool randomizeMenu = true;
+        public int minDishes = 3;
+        public int maxDishes = 6;
+        
         [Header("Service Settings")]
         public float eatingDuration = 3f;  // 用餐动画时长
         public bool provideFreeWater = true;  // 是否提供免费水

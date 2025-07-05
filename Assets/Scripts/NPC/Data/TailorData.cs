@@ -10,6 +10,11 @@ namespace NPC.Data
         [Header("Bag Upgrade Services")]
         public List<BagUpgrade> bagUpgrades = new List<BagUpgrade>();
         
+        [Header("Service Randomization")]
+        public bool randomizeUpgrades = true;
+        public int minUpgradeOptions = 1;
+        public int maxUpgradeOptions = 3;
+        
         [Header("Special Services")]
         public bool canRepairArmor = true;  // 修理护甲（预留）
         public bool canDyeClothes = true;  // 染色服务（预留）

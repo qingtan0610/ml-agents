@@ -16,6 +16,9 @@ namespace Rooms
         [SerializeField] private int roomSize = 16; // 每个房间的大小
         [SerializeField] private int currentMapLevel = 1; // 当前地图等级
         
+        // 公开当前地图等级供其他系统使用
+        public int CurrentMapLevel => currentMapLevel;
+        
         [Header("Room System Configuration")]
         [SerializeField] private RoomSystemConfig roomSystemConfig; // 房间系统配置
         
@@ -760,6 +763,20 @@ namespace Rooms
             
             // 清理场景中所有的掉落物
             ClearAllPickups();
+            
+            // 清理NPC运行时数据，让新地图的NPC重新随机化
+            var npcDataManager = NPC.Runtime.NPCRuntimeDataManager.Instance;
+            if (npcDataManager != null)
+            {
+                npcDataManager.ClearCurrentMapData();
+            }
+            
+            // 清理商人存档数据
+            var merchantSaveManager = NPC.Managers.MerchantSaveManager.Instance;
+            if (merchantSaveManager != null)
+            {
+                merchantSaveManager.ClearAllData();
+            }
         }
         
         /// <summary>
@@ -811,6 +828,27 @@ namespace Rooms
         {
             currentMapLevel++;
             GenerateMap();
+        }
+        
+        /// <summary>
+        /// 根据世界坐标获取房间网格坐标
+        /// </summary>
+        public Vector2Int GetRoomCoordinate(Vector3 worldPosition)
+        {
+            int x = Mathf.FloorToInt((worldPosition.x + roomSize / 2) / roomSize);
+            int y = Mathf.FloorToInt((worldPosition.y + roomSize / 2) / roomSize);
+            return new Vector2Int(x, y);
+        }
+        
+        /// <summary>
+        /// 获取指定网格坐标的房间
+        /// </summary>
+        public SimplifiedRoom GetRoomAt(int x, int y)
+        {
+            if (x < 0 || x >= mapSize || y < 0 || y >= mapSize)
+                return null;
+            
+            return roomGrid[x, y];
         }
         
         private void OnDrawGizmos()

@@ -10,6 +10,11 @@ namespace NPC.Data
         [Header("Shop Settings")]
         public ShopInventory shopInventory;
         
+        [Header("Randomization")]
+        public bool randomizeInventory = true; // 是否随机化商品
+        public int minItemTypes = 4; // 最少商品种类
+        public int maxItemTypes = 8; // 最多商品种类
+        
         [Header("Pricing")]
         [Range(0.5f, 2f)]
         public float buyPriceMultiplier = 1f;  // 购买价格倍率

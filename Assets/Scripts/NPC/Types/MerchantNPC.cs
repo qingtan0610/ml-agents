@@ -2,6 +2,8 @@ using UnityEngine;
 using NPC.Core;
 using NPC.Data;
 using NPC.Interfaces;
+using NPC.Runtime;
+using NPC.Managers;
 using Inventory;
 using Inventory.Items;
 using Inventory.Managers;
@@ -15,6 +17,8 @@ namespace NPC.Types
         
         private GameObject currentShopUI;
         private MerchantData merchantData => npcData as MerchantData;
+        private RuntimeShopInventory runtimeInventory;
+        private string merchantId;
         
         protected override void Awake()
         {
@@ -24,6 +28,52 @@ namespace NPC.Types
             if (npcData != null && !(npcData is MerchantData))
             {
                 Debug.LogError($"MerchantNPC requires MerchantData, but got {npcData.GetType().Name}");
+            }
+            
+            // 初始化运行时库存
+            runtimeInventory = new RuntimeShopInventory();
+        }
+        
+        protected override void Start()
+        {
+            base.Start();
+            
+            // 生成唯一的商人ID - 基于地图等级和实例索引
+            int mapLevel = GetCurrentMapLevel();
+            int instanceIndex = GetInstanceIndex();
+            merchantId = $"{merchantData?.npcId ?? "merchant"}_map{mapLevel}_inst{instanceIndex}";
+            
+            // 从配置初始化库存
+            if (merchantData != null && merchantData.shopInventory != null)
+            {
+                if (merchantData.randomizeInventory)
+                {
+                    // 随机选择商品 - 使用地图等级和实例索引作为种子
+                    float seed = mapLevel * 10000f + instanceIndex;
+                    int itemCount = Random.Range(merchantData.minItemTypes, merchantData.maxItemTypes + 1);
+                    runtimeInventory.InitializeRandomized(merchantData.shopInventory, itemCount, seed);
+                    
+                    Debug.Log($"[MerchantNPC] {merchantData.npcName} 随机选择了 {itemCount} 种商品");
+                }
+                else
+                {
+                    // 使用全部商品
+                    runtimeInventory.Initialize(merchantData.shopInventory);
+                }
+                
+                // 注册到存档管理器
+                MerchantSaveManager.Instance.RegisterMerchant(merchantId, runtimeInventory);
+            }
+        }
+        
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+            
+            // 保存库存数据
+            if (runtimeInventory != null)
+            {
+                MerchantSaveManager.Instance.SaveMerchantInventory(merchantId, runtimeInventory);
             }
         }
         
@@ -61,10 +111,10 @@ namespace NPC.Types
             var currencyManager = customer.GetComponent<CurrencyManager>();
             if (currencyManager == null) return false;
             
-            var shopItem = merchantData.shopInventory.GetShopItem(itemId);
-            if (shopItem == null || shopItem.item == null) return false;
+            var runtimeItem = runtimeInventory.GetItem(itemId);
+            if (runtimeItem == null || runtimeItem.item == null) return false;
             
-            float price = GetItemPrice(shopItem) * quantity;
+            float price = GetItemPrice(runtimeItem) * quantity;
             return currencyManager.CanAfford(Mathf.RoundToInt(price));
         }
         
@@ -81,34 +131,31 @@ namespace NPC.Types
             
             if (inventory == null || currencyManager == null) return false;
             
-            var shopItem = merchantData.shopInventory.GetShopItem(itemId);
-            if (shopItem == null || shopItem.item == null) return false;
+            var runtimeItem = runtimeInventory.GetItem(itemId);
+            if (runtimeItem == null || runtimeItem.item == null) return false;
             
             // 检查背包空间
-            if (!inventory.CanAddItem(shopItem.item, quantity))
+            if (!inventory.CanAddItem(runtimeItem.item, quantity))
             {
                 ShowDialogue(merchantData.inventoryFullText);
                 return false;
             }
             
             // 检查库存
-            if (shopItem.stock != -1 && shopItem.stock < quantity)
+            if (runtimeItem.currentStock < quantity)
             {
-                ShowDialogue($"抱歉，我只有 {shopItem.stock} 个 {shopItem.item.ItemName}");
+                ShowDialogue($"抱歉，我只有 {runtimeItem.currentStock} 个 {runtimeItem.item.ItemName}");
                 return false;
             }
             
             // 执行交易
-            float totalPrice = GetItemPrice(shopItem) * quantity;
+            float totalPrice = GetItemPrice(runtimeItem) * quantity;
             if (currencyManager.SpendGold(Mathf.RoundToInt(totalPrice)))
             {
-                inventory.AddItem(shopItem.item, quantity);
+                inventory.AddItem(runtimeItem.item, quantity);
                 
-                // 更新库存
-                if (shopItem.stock != -1)
-                {
-                    shopItem.stock -= quantity;
-                }
+                // 更新运行时库存
+                runtimeItem.Purchase(quantity);
                 
                 ShowDialogue(merchantData.purchaseSuccessText);
                 
@@ -146,18 +193,18 @@ namespace NPC.Types
         }
         
         // 辅助方法
-        private float GetItemPrice(ShopInventory.ShopItem shopItem)
+        private float GetItemPrice(RuntimeShopInventory.RuntimeShopItem runtimeItem)
         {
-            if (shopItem.priceOverride > 0)
+            if (runtimeItem.priceOverride > 0)
             {
-                return shopItem.priceOverride;
+                return runtimeItem.priceOverride;
             }
             
-            float basePrice = shopItem.item.BuyPrice;
+            float basePrice = runtimeItem.item.BuyPrice;
             float multiplier = GetPriceMultiplier();
             
             // 每日特惠
-            if (shopItem.isDailyDeal && merchantData.hasDailyDeals)
+            if (runtimeItem.isDailyDeal && merchantData.hasDailyDeals)
             {
                 multiplier *= (1f - merchantData.dailyDealDiscount / 100f);
             }
@@ -169,15 +216,19 @@ namespace NPC.Types
         {
             Debug.Log($"=== {merchantData.npcName}的商店 ===");
             
-            foreach (var shopItem in merchantData.shopInventory.items)
+            // 检查补货
+            runtimeInventory.CheckRestock();
+            
+            var runtimeItems = runtimeInventory.GetAllItems();
+            foreach (var runtimeItem in runtimeItems)
             {
-                if (shopItem.item == null) continue;
+                if (runtimeItem.item == null) continue;
                 
-                string stockText = shopItem.stock == -1 ? "无限" : shopItem.stock.ToString();
-                float price = GetItemPrice(shopItem);
-                string dealText = shopItem.isDailyDeal ? " [今日特惠!]" : "";
+                string stockText = runtimeItem.maxStock == -1 ? "无限" : runtimeItem.currentStock.ToString();
+                float price = GetItemPrice(runtimeItem);
+                string dealText = runtimeItem.isDailyDeal ? " [今日特惠!]" : "";
                 
-                Debug.Log($"{shopItem.item.ItemName} - {price:F0}金币 (库存: {stockText}){dealText}");
+                Debug.Log($"{runtimeItem.item.ItemName} - {price:F0}金币 (库存: {stockText}){dealText}");
             }
         }
         
@@ -216,5 +267,22 @@ namespace NPC.Types
             
             return false;
         }
+        
+        /// <summary>
+        /// 强制补货（由管理器调用）
+        /// </summary>
+        public void ForceRestock()
+        {
+            if (runtimeInventory != null)
+            {
+                runtimeInventory.Restock();
+                Debug.Log($"[MerchantNPC] {merchantData?.npcName ?? name} 已补货");
+            }
+        }
+        
+        /// <summary>
+        /// 获取商人ID
+        /// </summary>
+        public string GetMerchantId() => merchantId;
     }
 }

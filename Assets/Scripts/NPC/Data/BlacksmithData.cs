@@ -10,8 +10,18 @@ namespace NPC.Data
         [Header("Crafting Services")]
         public List<CraftingRecipe> recipes = new List<CraftingRecipe>();
         
+        [Header("Recipe Randomization")]
+        public bool randomizeRecipes = true;
+        public int minRecipes = 2;
+        public int maxRecipes = 5;
+        
         [Header("Upgrade Services")]
         public List<WeaponUpgrade> upgradeOptions = new List<WeaponUpgrade>();
+        
+        [Header("Upgrade Randomization")]
+        public bool randomizeUpgrades = true;
+        public int minUpgradeTypes = 1;
+        public int maxUpgradeTypes = 3;
         
         [Header("Pricing")]
         [Range(0.5f, 2f)]

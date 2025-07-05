@@ -279,6 +279,30 @@ namespace NPC.Core
             }
         }
         
+        // 生命周期
+        protected virtual void OnDestroy()
+        {
+            // 子类可以重写此方法进行清理
+        }
+        
+        /// <summary>
+        /// 获取当前地图等级
+        /// </summary>
+        protected int GetCurrentMapLevel()
+        {
+            var mapGenerator = FindObjectOfType<Rooms.MapGenerator>();
+            return mapGenerator != null ? mapGenerator.CurrentMapLevel : 1;
+        }
+        
+        /// <summary>
+        /// 获取NPC实例索引（同类型NPC的序号）
+        /// </summary>
+        protected int GetInstanceIndex()
+        {
+            // 使用GetInstanceID的哈希值作为稳定的索引
+            return Mathf.Abs(GetInstanceID() % 1000);
+        }
+        
         // 编辑器辅助
         protected virtual void OnDrawGizmosSelected()
         {

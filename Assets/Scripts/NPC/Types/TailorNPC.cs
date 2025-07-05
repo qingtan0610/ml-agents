@@ -2,6 +2,8 @@ using UnityEngine;
 using NPC.Core;
 using NPC.Data;
 using NPC.Interfaces;
+using NPC.Runtime;
+using NPC.Managers;
 using Inventory;
 using Inventory.Items;
 using Inventory.Managers;
@@ -17,6 +19,8 @@ namespace NPC.Types
         private GameObject currentUI;
         private Coroutine upgradeCoroutine;
         private TailorData tailorData => npcData as TailorData;
+        private RuntimeTailorServices runtimeServices;
+        private string tailorId;
         
         protected override void Awake()
         {
@@ -27,20 +31,49 @@ namespace NPC.Types
             {
                 Debug.LogError($"TailorNPC requires TailorData, but got {npcData.GetType().Name}");
             }
+            
+            // 初始化运行时服务
+            runtimeServices = new RuntimeTailorServices();
+        }
+        
+        protected override void Start()
+        {
+            base.Start();
+            
+            // 生成唯一ID - 基于地图等级和实例索引
+            int mapLevel = GetCurrentMapLevel();
+            int instanceIndex = GetInstanceIndex();
+            tailorId = $"{tailorData?.npcId ?? "tailor"}_map{mapLevel}_inst{instanceIndex}";
+            
+            // 初始化服务
+            if (tailorData != null)
+            {
+                float seed = mapLevel * 10000f + instanceIndex;
+                runtimeServices.InitializeRandomized(tailorData, seed);
+                
+                // 检查存档
+                var saveData = NPCRuntimeDataManager.Instance.GetNPCData<TailorServicesSaveData>(tailorId);
+                if (saveData != null)
+                {
+                    runtimeServices.LoadSaveData(saveData, tailorData);
+                }
+            }
+        }
+        
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+            
+            // 保存数据
+            if (runtimeServices != null && tailorData != null)
+            {
+                NPCRuntimeDataManager.Instance.SaveNPCData(tailorId, runtimeServices.GetSaveData());
+            }
         }
         
         
         protected override void OnInteractionStarted(GameObject interactor)
         {
-            // 确保有默认数据
-            if (tailorData != null)
-            {
-                if (tailorData.bagUpgrades == null || tailorData.bagUpgrades.Count == 0)
-                {
-                    CreateDefaultBagUpgrades();
-                }
-            }
-            
             ExamineBag(interactor);
         }
         
@@ -64,7 +97,7 @@ namespace NPC.Types
             }
             
             // 查找背包升级服务
-            BagUpgrade upgrade = FindUpgrade(serviceId);
+            BagUpgrade upgrade = runtimeServices.GetUpgrade(serviceId);
             if (upgrade != null)
             {
                 PerformBagUpgrade(customer, upgrade);
@@ -75,7 +108,7 @@ namespace NPC.Types
         {
             if (tailorData == null) return false;
             
-            BagUpgrade upgrade = FindUpgrade(serviceId);
+            BagUpgrade upgrade = runtimeServices.GetUpgrade(serviceId);
             if (upgrade == null) return false;
             
             var inventory = customer.GetComponent<Inventory.Inventory>();
@@ -96,19 +129,19 @@ namespace NPC.Types
             }
             
             // 检查金币
-            int cost = CalculateUpgradeCost(upgrade);
+            int cost = runtimeServices.CalculateUpgradePrice(upgrade, tailorData.upgradePriceMultiplier);
             return currencyManager.CanAfford(cost);
         }
         
         public int GetServiceCost(string serviceId)
         {
-            BagUpgrade upgrade = FindUpgrade(serviceId);
-            return upgrade != null ? CalculateUpgradeCost(upgrade) : 0;
+            BagUpgrade upgrade = runtimeServices.GetUpgrade(serviceId);
+            return upgrade != null ? runtimeServices.CalculateUpgradePrice(upgrade, tailorData.upgradePriceMultiplier) : 0;
         }
         
         public string GetServiceDescription(string serviceId)
         {
-            BagUpgrade upgrade = FindUpgrade(serviceId);
+            BagUpgrade upgrade = runtimeServices.GetUpgrade(serviceId);
             return upgrade?.description ?? "未知服务";
         }
         
@@ -152,7 +185,7 @@ namespace NPC.Types
                 inventory.RemoveItem(material.material, material.amount);
             }
             
-            int cost = CalculateUpgradeCost(upgrade);
+            int cost = runtimeServices.CalculateUpgradePrice(upgrade, tailorData.upgradePriceMultiplier);
             currencyManager.SpendGold(cost);
             
             // 开始升级动画
@@ -178,6 +211,9 @@ namespace NPC.Types
                 // 扩展背包容量
                 inventory.ExpandCapacity(upgrade.slotsToAdd);
                 
+                // 记录升级使用
+                runtimeServices.RecordUpgradeUse(upgrade.upgradeName);
+                
                 ShowDialogue(tailorData.upgradeCompleteText);
                 
                 // 播放完成音效
@@ -194,7 +230,7 @@ namespace NPC.Types
         {
             Debug.Log($"=== {tailorData.npcName}的背包升级服务 ===");
             
-            int cost = CalculateUpgradeCost(upgrade);
+            int cost = runtimeServices.CalculateUpgradePrice(upgrade, tailorData.upgradePriceMultiplier);
             bool canAfford = CanProvideService(customer, upgrade.upgradeName);
             string statusText = canAfford ? "" : " [材料或金币不足]";
             
@@ -218,12 +254,6 @@ namespace NPC.Types
             }
         }
         
-        private BagUpgrade FindUpgrade(string upgradeName)
-        {
-            if (tailorData == null || tailorData.bagUpgrades == null) return null;
-            
-            return tailorData.bagUpgrades.Find(u => u.upgradeName == upgradeName);
-        }
         
         private void DisplayAllUpgradeOptions(GameObject customer)
         {
@@ -231,12 +261,6 @@ namespace NPC.Types
             {
                 ShowDialogue("抱歉，我这里没有背包升级服务。");
                 return;
-            }
-            
-            // 如果没有配置升级选项，创建默认的
-            if (tailorData.bagUpgrades == null || tailorData.bagUpgrades.Count == 0)
-            {
-                CreateDefaultBagUpgrades();
             }
             
             var inventory = customer.GetComponent<Inventory.Inventory>();
@@ -249,7 +273,8 @@ namespace NPC.Types
             
             bool hasAvailableUpgrade = false;
             
-            foreach (var upgrade in tailorData.bagUpgrades)
+            var availableUpgrades = runtimeServices.GetAvailableUpgrades();
+            foreach (var upgrade in availableUpgrades)
             {
                 bool canUpgrade = currentSlots == upgrade.requiredCurrentSlots;
                 bool canAfford = CanProvideService(customer, upgrade.upgradeName);
@@ -274,7 +299,7 @@ namespace NPC.Types
                 
                 Debug.Log($"{upgrade.upgradeName}{statusText}");
                 Debug.Log($"  要求: {upgrade.requiredCurrentSlots}格 -> {upgrade.maxSlots}格 (+{upgrade.slotsToAdd}格)");
-                Debug.Log($"  费用: {CalculateUpgradeCost(upgrade)}金币");
+                Debug.Log($"  费用: {runtimeServices.CalculateUpgradePrice(upgrade, tailorData.upgradePriceMultiplier)}金币");
                 
                 if (upgrade.requiredMaterials.Count > 0)
                 {
@@ -300,60 +325,8 @@ namespace NPC.Types
         
         private BagUpgrade FindAvailableUpgrade(Inventory.Inventory inventory)
         {
-            if (tailorData == null || tailorData.bagUpgrades == null) return null;
-            
             int currentSlots = inventory.GetMaxSlots();
-            
-            // 修改条件：当前容量必须等于要求的容量
-            return tailorData.bagUpgrades.Find(u => 
-                currentSlots == u.requiredCurrentSlots);
-        }
-        
-        private void CreateDefaultBagUpgrades()
-        {
-            if (tailorData.bagUpgrades == null)
-            {
-                tailorData.bagUpgrades = new System.Collections.Generic.List<BagUpgrade>();
-            }
-            
-            // 创建默认的背包升级选项
-            tailorData.bagUpgrades.Add(new BagUpgrade
-            {
-                upgradeName = "小型背包扩展",
-                description = "增加2个背包格子",
-                slotsToAdd = 2,
-                requiredCurrentSlots = 10,
-                maxSlots = 12,
-                upgradeFee = 500,
-                requiredMaterials = new System.Collections.Generic.List<UpgradeMaterial>()
-            });
-            
-            tailorData.bagUpgrades.Add(new BagUpgrade
-            {
-                upgradeName = "中型背包扩展",
-                description = "增加3个背包格子",
-                slotsToAdd = 3,
-                requiredCurrentSlots = 12,
-                maxSlots = 15,
-                upgradeFee = 1000,
-                requiredMaterials = new System.Collections.Generic.List<UpgradeMaterial>()
-            });
-            
-            tailorData.bagUpgrades.Add(new BagUpgrade
-            {
-                upgradeName = "大型背包扩展",
-                description = "增加5个背包格子",
-                slotsToAdd = 5,
-                requiredCurrentSlots = 15,
-                maxSlots = 20,
-                upgradeFee = 2000,
-                requiredMaterials = new System.Collections.Generic.List<UpgradeMaterial>()
-            });
-        }
-        
-        private int CalculateUpgradeCost(BagUpgrade upgrade)
-        {
-            return Mathf.RoundToInt(upgrade.upgradeFee * tailorData.upgradePriceMultiplier);
+            return runtimeServices.GetNextUpgrade(currentSlots);
         }
         
         private void CloseUI()

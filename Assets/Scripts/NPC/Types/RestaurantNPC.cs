@@ -2,6 +2,8 @@ using UnityEngine;
 using NPC.Core;
 using NPC.Data;
 using NPC.Interfaces;
+using NPC.Runtime;
+using NPC.Managers;
 using AI.Stats;
 using System.Collections;
 using System.Collections.Generic;
@@ -18,6 +20,8 @@ namespace NPC.Types
         private Coroutine eatingCoroutine;
         private GameObject currentCustomer;
         private RestaurantData restaurantData => npcData as RestaurantData;
+        private RuntimeRestaurantServices runtimeServices;
+        private string restaurantId;
         
         protected override void Awake()
         {
@@ -27,6 +31,44 @@ namespace NPC.Types
             if (npcData != null && !(npcData is RestaurantData))
             {
                 Debug.LogError($"RestaurantNPC requires RestaurantData, but got {npcData.GetType().Name}");
+            }
+            
+            // 初始化运行时服务
+            runtimeServices = new RuntimeRestaurantServices();
+        }
+        
+        protected override void Start()
+        {
+            base.Start();
+            
+            // 生成唯一ID - 基于地图等级和实例索引
+            int mapLevel = GetCurrentMapLevel();
+            int instanceIndex = GetInstanceIndex();
+            restaurantId = $"{restaurantData?.npcId ?? "restaurant"}_map{mapLevel}_inst{instanceIndex}";
+            
+            // 初始化服务
+            if (restaurantData != null)
+            {
+                float seed = mapLevel * 10000f + instanceIndex;
+                runtimeServices.InitializeRandomized(restaurantData, seed);
+                
+                // 检查存档
+                var saveData = NPCRuntimeDataManager.Instance.GetNPCData<RestaurantServicesSaveData>(restaurantId);
+                if (saveData != null)
+                {
+                    runtimeServices.LoadSaveData(saveData, restaurantData);
+                }
+            }
+        }
+        
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+            
+            // 保存数据
+            if (runtimeServices != null && restaurantData != null)
+            {
+                NPCRuntimeDataManager.Instance.SaveNPCData(restaurantId, runtimeServices.GetSaveData());
             }
         }
         
@@ -62,7 +104,7 @@ namespace NPC.Types
             }
             
             // 查找菜单项
-            FoodMenuItem menuItem = FindMenuItem(serviceId);
+            FoodMenuItem menuItem = runtimeServices.GetMenuItem(serviceId);
             if (menuItem != null)
             {
                 OrderFood(customer, menuItem);
@@ -78,13 +120,14 @@ namespace NPC.Types
                 return true;
             
             // 检查是否能负担菜品
-            FoodMenuItem menuItem = FindMenuItem(serviceId);
+            FoodMenuItem menuItem = runtimeServices.GetMenuItem(serviceId);
             if (menuItem == null) return false;
             
             var currencyManager = customer.GetComponent<CurrencyManager>();
             if (currencyManager == null) return false;
             
-            return currencyManager.CanAfford(menuItem.price);
+            int price = runtimeServices.GetItemPrice(serviceId);
+            return currencyManager.CanAfford(price);
         }
         
         public int GetServiceCost(string serviceId)
@@ -93,8 +136,7 @@ namespace NPC.Types
             if (serviceId == "free_water") return 0;
             
             // 查找菜品价格
-            FoodMenuItem menuItem = FindMenuItem(serviceId);
-            return menuItem?.price ?? 0;
+            return runtimeServices.GetItemPrice(serviceId);
         }
         
         public string GetServiceDescription(string serviceId)
@@ -102,7 +144,7 @@ namespace NPC.Types
             if (serviceId == "free_water")
                 return "免费的清水";
             
-            FoodMenuItem menuItem = FindMenuItem(serviceId);
+            FoodMenuItem menuItem = runtimeServices.GetMenuItem(serviceId);
             return menuItem?.description ?? "未知服务";
         }
         
@@ -126,13 +168,17 @@ namespace NPC.Types
             }
             
             // 显示菜单
-            for (int i = 0; i < restaurantData.menu.Count; i++)
+            var availableMenu = runtimeServices.GetAvailableMenu();
+            foreach (var item in availableMenu)
             {
-                var item = restaurantData.menu[i];
+                int price = runtimeServices.GetItemPrice(item.itemName);
+                bool isSpecial = runtimeServices.IsSpecialOffer(item.itemName);
+                
                 string specialTag = item.isSpecialDish ? " [特色菜]" : "";
+                if (isSpecial) specialTag += " [今日特价]";
                 string effects = GetEffectsDescription(item);
                 
-                Debug.Log($"{item.itemName} - {item.price}金币{specialTag}");
+                Debug.Log($"{item.itemName} - {price}金币{specialTag}");
                 Debug.Log($"  {item.description}");
                 Debug.Log($"  效果: {effects}");
             }
@@ -150,7 +196,8 @@ namespace NPC.Types
             }
             
             // 检查金币
-            if (!currencyManager.SpendGold(menuItem.price))
+            int price = runtimeServices.GetItemPrice(menuItem.itemName);
+            if (!currencyManager.SpendGold(price))
             {
                 ShowDialogue("您的金币不足。");
                 return;
@@ -253,12 +300,6 @@ namespace NPC.Types
             Debug.Log($"Applied buff: {buffData.buffName} for {buffData.duration} seconds");
         }
         
-        private FoodMenuItem FindMenuItem(string itemName)
-        {
-            if (restaurantData == null || restaurantData.menu == null) return null;
-            
-            return restaurantData.menu.Find(item => item.itemName == itemName);
-        }
         
         private string GetEffectsDescription(FoodMenuItem item)
         {
@@ -292,17 +333,27 @@ namespace NPC.Types
         // 特殊菜品推荐
         public FoodMenuItem GetDailySpecial()
         {
-            if (restaurantData == null || restaurantData.menu.Count == 0) return null;
+            var availableMenu = runtimeServices.GetAvailableMenu();
+            if (availableMenu.Count == 0) return null;
+            
+            // 优先返回今日特价
+            foreach (var item in availableMenu)
+            {
+                if (runtimeServices.IsSpecialOffer(item.itemName))
+                {
+                    return item;
+                }
+            }
             
             // 找出所有特色菜
-            var specials = restaurantData.menu.FindAll(item => item.isSpecialDish);
+            var specials = availableMenu.FindAll(item => item.isSpecialDish);
             if (specials.Count > 0)
             {
                 return specials[Random.Range(0, specials.Count)];
             }
             
             // 如果没有特色菜，随机返回一个
-            return restaurantData.menu[Random.Range(0, restaurantData.menu.Count)];
+            return availableMenu[Random.Range(0, availableMenu.Count)];
         }
     }
 }

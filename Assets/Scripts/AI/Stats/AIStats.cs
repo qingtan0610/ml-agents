@@ -37,6 +37,12 @@ namespace AI.Stats
         public float TimeSurvived => timeSinceSpawn;
         public AIStatsConfig Config => config;
         
+        // Quick access properties for current stats
+        public float CurrentHealth => GetStat(StatType.Health);
+        public float CurrentHunger => GetStat(StatType.Hunger);
+        public float CurrentThirst => GetStat(StatType.Thirst);
+        public float CurrentStamina => GetStat(StatType.Stamina);
+        
         private void Awake()
         {
             Debug.Log("[AIStats] Awake called");

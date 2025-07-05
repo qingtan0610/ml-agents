@@ -21,6 +21,11 @@ namespace AI.Stats
         public float Social => social;
         public float Mentality => mentality;
         
+        // Alternative property names for compatibility
+        public float EmotionalState => emotion;
+        public float SocialState => social;
+        public float MentalState => mentality;
+        
         public event Action<MoodChangeEventArgs> OnMoodChanged;
         
         public AIMood(AIStatsConfig config)
@@ -180,6 +185,18 @@ namespace AI.Stats
             social = Mathf.Min(social + increase, 100f);
             lastSocialInteractionTime = Time.time;
             lastFaceToFaceTime = Time.time;
+            
+            if (Mathf.Abs(social - oldSocial) > 0.1f)
+            {
+                OnMoodChanged?.Invoke(new MoodChangeEventArgs(MoodDimension.Social, oldSocial, social));
+            }
+        }
+        
+        // 改善社交值（通用方法）
+        public void ImproveSocial(float amount)
+        {
+            float oldSocial = social;
+            social = Mathf.Clamp(social + amount, -100f, 100f);
             
             if (Mathf.Abs(social - oldSocial) > 0.1f)
             {

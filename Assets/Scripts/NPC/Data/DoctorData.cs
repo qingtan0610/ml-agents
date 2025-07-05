@@ -10,8 +10,16 @@ namespace NPC.Data
         [Header("Medical Services")]
         public List<MedicalService> services = new List<MedicalService>();
         
+        [Header("Service Randomization")]
+        public bool randomizeServices = true;
+        public int minServices = 2;
+        public int maxServices = 4;
+        
         [Header("Medicine Shop")]
         public ShopInventory medicineShop;  // 使用MerchantData中的结构
+        public bool randomizeMedicine = true;
+        public int minMedicineTypes = 3;
+        public int maxMedicineTypes = 6;
         
         [Header("Pricing")]
         [Range(0.5f, 2f)]

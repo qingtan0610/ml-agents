@@ -37,6 +37,11 @@ namespace Player
         private Vector2 velocitySmooth;
         private bool isSprinting;
         
+        // AI Control
+        private bool isAIControlled = false;
+        private Vector2 aiMovementInput;
+        private Vector2 aiAimDirection;
+        
         // IDamageable implementation
         public float CurrentHealth => aiStats?.GetStat(StatType.Health) ?? 100f;
         public float MaxHealth => aiStats?.Config?.maxHealth ?? 100f;
@@ -119,25 +124,40 @@ namespace Player
         
         private void HandleInput()
         {
-            // 获取输入
-            float h = Input.GetAxisRaw("Horizontal");
-            float v = Input.GetAxisRaw("Vertical");
-            movement = new Vector2(h, v);
-            
-            // 归一化但保持死区
-            if (movement.magnitude > 1f)
+            if (isAIControlled)
             {
-                movement.Normalize();
+                // 使用AI输入
+                movement = aiMovementInput;
+                
+                // 归一化但保持死区
+                if (movement.magnitude > 1f)
+                {
+                    movement.Normalize();
+                }
+                // Sprint状态由AI控制方法设置
             }
-            
-            // 调试输入问题
-            if (movement.magnitude > 0.1f && Mathf.Abs(h) < 0.1f && Mathf.Abs(v) < 0.1f)
+            else
             {
-                Debug.LogWarning($"Input mismatch! Movement: {movement}, Raw input: ({h}, {v})");
+                // 获取输入
+                float h = Input.GetAxisRaw("Horizontal");
+                float v = Input.GetAxisRaw("Vertical");
+                movement = new Vector2(h, v);
+                
+                // 归一化但保持死区
+                if (movement.magnitude > 1f)
+                {
+                    movement.Normalize();
+                }
+                
+                // 调试输入问题
+                if (movement.magnitude > 0.1f && Mathf.Abs(h) < 0.1f && Mathf.Abs(v) < 0.1f)
+                {
+                    Debug.LogWarning($"Input mismatch! Movement: {movement}, Raw input: ({h}, {v})");
+                }
+                
+                // 检查冲刺
+                isSprinting = Input.GetKey(sprintKey) && aiStats != null && aiStats.GetStat(StatType.Stamina) > 10f;
             }
-            
-            // 检查冲刺
-            isSprinting = Input.GetKey(sprintKey) && aiStats != null && aiStats.GetStat(StatType.Stamina) > 10f;
         }
         
         private void HandleMovement()
@@ -342,6 +362,59 @@ namespace Player
                 rb.velocity = Vector2.zero;
                 rb.angularVelocity = 0f;
                 rb.constraints = RigidbodyConstraints2D.FreezeRotation;  // 只冻结旋转
+            }
+        }
+        
+        // AI Control Methods
+        public void SetAIControlled(bool controlled)
+        {
+            isAIControlled = controlled;
+        }
+        
+        public void SetMovementInput(Vector2 input)
+        {
+            if (isAIControlled)
+            {
+                aiMovementInput = input;
+            }
+        }
+        
+        public void SetAimDirection(Vector2 direction)
+        {
+            if (isAIControlled)
+            {
+                aiAimDirection = direction;
+            }
+        }
+        
+        public void StartSprint()
+        {
+            if (isAIControlled && aiStats?.GetStat(StatType.Stamina) > 0)
+            {
+                isSprinting = true;
+            }
+        }
+        
+        public void StopSprint()
+        {
+            if (isAIControlled)
+            {
+                isSprinting = false;
+            }
+        }
+        
+        public void PerformAttack()
+        {
+            if (isAIControlled && !IsDead)
+            {
+                combatSystem.PerformAttack();
+                
+                // 触发武器视觉动画
+                var weaponVisual = GetComponent<Player.WeaponVisualDisplay>();
+                if (weaponVisual != null)
+                {
+                    weaponVisual.PlayAttackAnimation();
+                }
             }
         }
         

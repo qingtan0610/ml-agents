@@ -98,6 +98,9 @@ namespace Enemy
         public float MaxHealth => maxHealth;
         public bool IsDead => isDead;
         
+        // Additional properties
+        public bool IsAlive => !isDead;
+        
         protected virtual void Awake()
         {
             rb = GetComponent<Rigidbody2D>();

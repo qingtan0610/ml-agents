@@ -2,6 +2,8 @@ using UnityEngine;
 using NPC.Core;
 using NPC.Data;
 using NPC.Interfaces;
+using NPC.Runtime;
+using NPC.Managers;
 using AI.Stats;
 using Inventory.Managers;
 using Inventory.Items;
@@ -17,6 +19,8 @@ namespace NPC.Types
         private GameObject currentUI;
         private bool isInShopMode = false;
         private DoctorData doctorData => npcData as DoctorData;
+        private RuntimeDoctorServices runtimeServices;
+        private string doctorId;
         
         protected override void Awake()
         {
@@ -26,6 +30,44 @@ namespace NPC.Types
             if (npcData != null && !(npcData is DoctorData))
             {
                 Debug.LogError($"DoctorNPC requires DoctorData, but got {npcData.GetType().Name}");
+            }
+            
+            // 初始化运行时服务
+            runtimeServices = new RuntimeDoctorServices();
+        }
+        
+        protected override void Start()
+        {
+            base.Start();
+            
+            // 生成唯一ID - 基于地图等级和实例索引
+            int mapLevel = GetCurrentMapLevel();
+            int instanceIndex = GetInstanceIndex();
+            doctorId = $"{doctorData?.npcId ?? "doctor"}_map{mapLevel}_inst{instanceIndex}";
+            
+            // 初始化服务
+            if (doctorData != null)
+            {
+                float seed = mapLevel * 10000f + instanceIndex;
+                runtimeServices.InitializeRandomized(doctorData, seed);
+                
+                // 检查存档
+                var saveData = NPCRuntimeDataManager.Instance.GetNPCData<DoctorServicesSaveData>(doctorId);
+                if (saveData != null)
+                {
+                    runtimeServices.LoadSaveData(saveData, doctorData);
+                }
+            }
+        }
+        
+        protected override void OnDestroy()
+        {
+            base.OnDestroy();
+            
+            // 保存数据
+            if (runtimeServices != null && doctorData != null)
+            {
+                NPCRuntimeDataManager.Instance.SaveNPCData(doctorId, runtimeServices.GetSaveData());
             }
         }
         
@@ -319,7 +361,8 @@ namespace NPC.Types
         private void OfferEmergencyTreatment(GameObject patient)
         {
             // 找到基础治疗服务
-            MedicalService emergencyService = doctorData.services.Find(s => s.fullHeal || s.healthRestore >= 50);
+            var availableServices = runtimeServices.GetAvailableServices();
+            MedicalService emergencyService = availableServices.Find(s => s.fullHeal || s.healthRestore >= 50);
             if (emergencyService != null)
             {
                 PerformMedicalService(patient, emergencyService);
@@ -330,7 +373,8 @@ namespace NPC.Types
         {
             Debug.Log($"=== {doctorData.npcName}的医疗服务 ===");
             
-            foreach (var service in doctorData.services)
+            var availableServices = runtimeServices.GetAvailableServices();
+            foreach (var service in availableServices)
             {
                 int cost = CalculateServiceCost(patient, service);
                 bool canAfford = CanProvideService(patient, service.serviceName);
@@ -376,9 +420,7 @@ namespace NPC.Types
         
         private MedicalService FindService(string serviceName)
         {
-            if (doctorData == null || doctorData.services == null) return null;
-            
-            return doctorData.services.Find(s => s.serviceName == serviceName);
+            return runtimeServices?.GetService(serviceName);
         }
         
         private void CloseUI()
