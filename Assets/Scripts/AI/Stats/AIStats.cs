@@ -6,10 +6,11 @@ using System.Linq;
 using AI.Stats;
 using AI.Config;
 using AI.Interfaces;
+using Combat.Interfaces;
 
 namespace AI.Stats
 {
-    public class AIStats : MonoBehaviour
+    public class AIStats : MonoBehaviour, IDamageable
     {
         [Header("Configuration")]
         [SerializeField] private AIStatsConfig config;
@@ -26,6 +27,65 @@ namespace AI.Stats
         [SerializeField] private bool isMoving = false;
         [SerializeField] private float timeSinceSpawn = 0f;
         private StatType? lastDeathCause = null;
+        
+        // IDamageable implementation (using existing properties)
+        public float MaxHealth => config?.maxHealth ?? 100f;
+        float IDamageable.CurrentHealth => CurrentHealth; // 使用已有的CurrentHealth属性
+        bool IDamageable.IsDead => IsDead; // 使用已有的IsDead属性
+        
+        public void TakeDamage(float damage, GameObject attacker, DamageInfo damageInfo = null)
+        {
+            if (isDead) return;
+            
+            // 计算实际伤害（考虑护甲等）
+            float actualDamage = damage;
+            
+            // 应用伤害
+            ModifyStat(StatType.Health, -actualDamage, StatChangeReason.Combat);
+            
+            // 添加战斗日志
+            Debug.Log($"[AIStats] {name} 受到 {actualDamage} 点伤害来自 {attacker?.name ?? "Unknown"}");
+            
+            // 应用Debuff
+            if (damageInfo != null && damageInfo.appliedDebuffs != null)
+            {
+                var buffManager = GetComponent<Buffs.BuffManager>();
+                if (buffManager != null)
+                {
+                    foreach (var debuff in damageInfo.appliedDebuffs)
+                    {
+                        if (debuff != null && UnityEngine.Random.value < damageInfo.debuffChance)
+                        {
+                            buffManager.AddBuff(debuff);
+                        }
+                    }
+                }
+            }
+            
+            // 击退效果
+            if (damageInfo != null && damageInfo.knockback > 0)
+            {
+                var rb = GetComponent<Rigidbody2D>();
+                if (rb != null)
+                {
+                    rb.AddForce(damageInfo.hitDirection * damageInfo.knockback, ForceMode2D.Impulse);
+                }
+            }
+        }
+        
+        public void Heal(float amount)
+        {
+            if (isDead) return;
+            ModifyStat(StatType.Health, amount, StatChangeReason.Item);
+        }
+        
+        public void Die()
+        {
+            if (!isDead)
+            {
+                Die(StatType.Health);
+            }
+        }
         
         // Events - 确保事件被正确初始化
         public StatChangeEvent OnStatChanged = new StatChangeEvent();
