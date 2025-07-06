@@ -86,8 +86,17 @@ namespace AI.Core
             combatSystem = GetComponent<CombatSystem2D>();
             animController = GetComponent<AnimationController2D>();
             
-            // 创建通信组件
-            communicator = gameObject.AddComponent<AICommunicator>();
+            // 获取或创建通信组件
+            communicator = GetComponent<AICommunicator>();
+            if (communicator == null)
+            {
+                communicator = gameObject.AddComponent<AICommunicator>();
+                Debug.Log($"[AIController] {name} 创建了新的AICommunicator");
+            }
+            else
+            {
+                Debug.Log($"[AIController] {name} 使用现有的AICommunicator");
+            }
             
             // 设置2D刚体
             if (rb != null)

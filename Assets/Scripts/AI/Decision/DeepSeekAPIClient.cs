@@ -213,7 +213,8 @@ namespace AI.Decision
                                 yield break;
                             }
                             
-                            if (response.error != null)
+                            // 检查是否有错误响应
+                            if (response.error != null && !string.IsNullOrEmpty(response.error.message))
                             {
                                 Debug.LogError($"[DeepSeekAPI] API错误: {response.error.message}");
                                 Debug.LogError($"[DeepSeekAPI] 错误类型: {response.error.type}, 代码: {response.error.code}");
@@ -221,6 +222,7 @@ namespace AI.Decision
                                 yield break;
                             }
                             
+                            // 检查是否有有效的响应
                             if (response.choices != null && response.choices.Count > 0)
                             {
                                 string content = response.choices[0].message.content;
@@ -352,12 +354,35 @@ namespace AI.Decision
                 var waterMsg = communicator.GetLatestMessage(CommunicationType.FoundWater);
                 var npcMsg = communicator.GetLatestMessage(CommunicationType.FoundNPC);
                 
-                sb.AppendLine("\n收到的交互机消息:");
-                if (helpMsg != null) sb.AppendLine("- 有AI求救");
-                if (comeHereMsg != null) sb.AppendLine("- 有AI请求支援");
-                if (portalMsg != null) sb.AppendLine("- 发现了传送门位置");
-                if (waterMsg != null) sb.AppendLine("- 发现了水源位置");
-                if (npcMsg != null) sb.AppendLine("- 发现了NPC位置");
+                // 只有真的有消息时才显示
+                bool hasAnyMessage = helpMsg != null || comeHereMsg != null || portalMsg != null || 
+                                   waterMsg != null || npcMsg != null;
+                
+                if (hasAnyMessage)
+                {
+                    sb.AppendLine("\n收到的交互机消息:");
+                    if (helpMsg != null) 
+                    {
+                        // 详细调试信息
+                        Debug.Log($"[DeepSeekAPI] 检测到Help消息: 发送者={helpMsg.Sender?.name ?? "Unknown"}, " +
+                                $"发送者存在={helpMsg.Sender != null}, 发送者是自己={helpMsg.Sender == context.Stats.GetComponent<AICommunicator>()}, " +
+                                $"时间={helpMsg.Timestamp}, 当前时间={Time.time}, 时间差={Time.time - helpMsg.Timestamp:F1}秒");
+                        
+                        // 如果发送者是自己，不显示求救信息
+                        if (helpMsg.Sender != communicator)
+                        {
+                            sb.AppendLine("- 有AI求救");
+                        }
+                        else
+                        {
+                            Debug.Log("[DeepSeekAPI] Help消息是自己发送的，忽略");
+                        }
+                    }
+                    if (comeHereMsg != null && comeHereMsg.Sender != communicator) sb.AppendLine("- 有AI请求支援");
+                    if (portalMsg != null && portalMsg.Sender != communicator) sb.AppendLine("- 发现了传送门位置");
+                    if (waterMsg != null && waterMsg.Sender != communicator) sb.AppendLine("- 发现了水源位置");
+                    if (npcMsg != null && npcMsg.Sender != communicator) sb.AppendLine("- 发现了NPC位置");
+                }
             }
             
             sb.AppendLine("\n请分析情况并提供决策建议。回复格式：");

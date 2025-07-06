@@ -24,6 +24,26 @@ namespace AI.Core
         // 所有AI通信器的静态列表
         private static List<AICommunicator> allCommunicators = new List<AICommunicator>();
         
+        // 静态构造函数，确保场景加载时清理
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            allCommunicators = new List<AICommunicator>();
+            Debug.Log("[AICommunicator] 静态列表已重置");
+        }
+        
+        private void Start()
+        {
+            // 确保开始时没有旧消息
+            receivedMessages.Clear();
+            sentMessages.Clear();
+            
+            // 清理可能存在的幽灵AI（已销毁但还在列表中的）
+            allCommunicators.RemoveAll(c => c == null);
+            
+            Debug.Log($"[AICommunicator] {name} 初始化完成，消息列表已清空，当前活跃AI数: {allCommunicators.Count}");
+        }
+        
         // 通信记录
         private List<CommunicationRecord> sentMessages = new List<CommunicationRecord>();
         private List<CommunicationRecord> receivedMessages = new List<CommunicationRecord>();
@@ -35,11 +55,16 @@ namespace AI.Core
         private void OnEnable()
         {
             allCommunicators.Add(this);
+            // 清理旧消息，避免接收到之前的消息
+            receivedMessages.Clear();
+            sentMessages.Clear();
+            Debug.Log($"[AICommunicator] {name} 加入，当前总数: {allCommunicators.Count}");
         }
         
         private void OnDisable()
         {
             allCommunicators.Remove(this);
+            Debug.Log($"[AICommunicator] {name} 离开，剩余总数: {allCommunicators.Count}");
         }
         
         // 发送消息（交互机）
@@ -62,18 +87,20 @@ namespace AI.Core
             });
             
             // 广播给所有其他AI
+            int receiversCount = 0;
             foreach (var receiver in allCommunicators)
             {
-                if (receiver != this)
+                if (receiver != this && receiver != null)
                 {
                     receiver.ReceiveRadioMessage(message);
+                    receiversCount++;
                 }
             }
             
             // 播放通信音效
             PlayCommunicationSound(type);
             
-            Debug.Log($"[AICommunicator] {name} 发送消息: {type} at {position}");
+            Debug.Log($"[AICommunicator] {name} 发送消息: {type} at {position}, 接收者数量: {receiversCount}");
         }
         
         // 发出声音（同房间）
@@ -170,6 +197,13 @@ namespace AI.Core
         // 接收无线电消息
         private void ReceiveRadioMessage(CommunicationMessage message)
         {
+            // 验证消息有效性
+            if (message == null || message.Sender == null)
+            {
+                Debug.LogWarning($"[AICommunicator] {name} 收到无效消息（发送者为空）");
+                return;
+            }
+            
             // 记录接收
             receivedMessages.Add(new CommunicationRecord
             {
@@ -252,10 +286,23 @@ namespace AI.Core
         
         public CommunicationMessage GetLatestMessage(CommunicationType type)
         {
-            return receivedMessages
-                .Where(r => r.Message.Type == type)
+            // 只返回最近60秒内的消息，避免过期消息影响决策
+            float messageValidTime = 60f;
+            
+            // 过滤掉发送者为空的消息
+            var message = receivedMessages
+                .Where(r => r.Message != null && r.Message.Sender != null && 
+                           r.Message.Type == type && Time.time - r.Time < messageValidTime)
                 .OrderByDescending(r => r.Time)
                 .FirstOrDefault()?.Message;
+            
+            // 调试日志，追踪消息来源
+            if (message != null && type == CommunicationType.Help)
+            {
+                Debug.Log($"[AICommunicator] {name} 获取到Help消息: 发送者={message.Sender?.name ?? "NULL"}, 时间差={Time.time - message.Timestamp:F1}秒, 发送者存在={message.Sender != null}");
+            }
+            
+            return message;
         }
         
         // 获取附近可以交流的AI

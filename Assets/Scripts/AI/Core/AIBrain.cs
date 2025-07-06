@@ -27,7 +27,7 @@ namespace AI.Core
         [SerializeField] private bool useDeepSeekAPI = true;     // 默认启用DeepSeek
         [SerializeField] private float deepSeekThreshold = 0.3f; // 当AI健康度低于此值时调用DeepSeek
         [SerializeField] private float deepSeekCooldown = 10f;   // DeepSeek调用冷却时间
-        [SerializeField] private float initialDecisionDelay = 2f; // 初始决策延迟
+        [SerializeField] private float initialDecisionDelay = 5f; // 初始决策延迟 - 增加到5秒确保场景完全初始化
         private float lastDeepSeekTime = -10f;
         private bool hasInitialDecision = false;
         
@@ -317,23 +317,42 @@ namespace AI.Core
                 RequestDecision();
             }
             
+            // 自动检查状态是否需要调整（避免卡在Critical状态）
+            if (currentState == AIState.Critical)
+            {
+                float healthPercent = aiStats.CurrentHealth / aiStats.Config.maxHealth;
+                float hungerPercent = aiStats.CurrentHunger / aiStats.Config.maxHunger;
+                float thirstPercent = aiStats.CurrentThirst / aiStats.Config.maxThirst;
+                
+                // 如果状态已经恢复，退出Critical状态
+                if (healthPercent > 0.5f && hungerPercent > 0.4f && thirstPercent > 0.4f)
+                {
+                    Debug.Log($"[AIBrain] 状态已恢复，退出Critical状态");
+                    currentState = AIState.Exploring;
+                }
+            }
+            
             // 更新记忆
             memory.Update(perception);
         }
         
         private bool ShouldUseDeepSeek()
         {
-            // 检查冷却时间
-            if (Time.time - lastDeepSeekTime < deepSeekCooldown)
-                return false;
-            
-            // 初始决策 - 游戏开始后进行一次决策
+            // 初始决策优先 - 游戏开始后进行一次决策
             if (!hasInitialDecision && Time.time > initialDecisionDelay)
             {
-                Debug.Log("[AIBrain] 触发初始DeepSeek决策");
+                // 检查AI在场景中的数量
+                var allAIs = FindObjectsOfType<AIStats>();
+                Debug.Log($"[AIBrain] 触发初始DeepSeek决策 - 场景中AI数量: {allAIs.Length}");
                 hasInitialDecision = true;
                 lastDeepSeekTime = Time.time;
                 return true;
+            }
+            
+            // 检查冷却时间（初始决策后才检查）
+            if (Time.time - lastDeepSeekTime < deepSeekCooldown)
+            {
+                return false;
             }
             
             // 关键时刻使用DeepSeek API
@@ -365,7 +384,7 @@ namespace AI.Core
                 healthPercent < deepSeekThreshold || 
                 hungerPercent < deepSeekThreshold ||
                 thirstPercent < deepSeekThreshold ||
-                currentState == AIState.Critical ||
+                // currentState == AIState.Critical || // 移除这个检查，避免循环触发
                 // 真正的危险情况
                 isInDanger ||
                 // 社交机会
@@ -481,7 +500,13 @@ namespace AI.Core
             // 应用DeepSeek的决策建议
             if (decision != null)
             {
-                currentState = decision.RecommendedState;
+                // 只在状态真正改变时更新
+                if (currentState != decision.RecommendedState)
+                {
+                    Debug.Log($"[AIBrain] 状态改变: {currentState} -> {decision.RecommendedState}");
+                    currentState = decision.RecommendedState;
+                }
+                
                 controller.SetPriority(decision.Priority);
                 
                 // 让AIController执行具体的决策行动

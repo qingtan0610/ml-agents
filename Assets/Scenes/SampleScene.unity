@@ -833,6 +833,7 @@ GameObject:
   - component: {fileID: 860460327}
   - component: {fileID: 860460326}
   - component: {fileID: 860460343}
+  - component: {fileID: 860460344}
   m_Layer: 11
   m_Name: AI_Player
   m_TagString: Player
@@ -966,6 +967,7 @@ MonoBehaviour:
     m_Bits: 43008
   communicationCooldown: 5
   communicationRange: 20
+  helpCooldown: 30
 --- !u!114 &860460334
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1032,8 +1034,10 @@ MonoBehaviour:
   perception: {fileID: 0}
   controller: {fileID: 0}
   decisionInterval: 0.5
-  useDeepSeekAPI: 0
+  useDeepSeekAPI: 1
   deepSeekThreshold: 0.3
+  deepSeekCooldown: 10
+  initialDecisionDelay: 2
   currentState: 0
   currentTarget: {x: 0, y: 0}
   currentInteractable: {fileID: 0}
@@ -1247,6 +1251,24 @@ MonoBehaviour:
   DecisionPeriod: 5
   DecisionStep: 0
   TakeActionsBetweenDecisions: 1
+--- !u!114 &860460344
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 860460325}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 47d7ccf3f767e844b9a377b57ad96220, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  voiceRange: 16
+  radioRange: 100
+  facialExpressionRange: 3
+  audioSource: {fileID: 0}
+  communicationSounds: []
+  useDeepSeekForDialogue: 1
 --- !u!1 &1217523500
 GameObject:
   m_ObjectHideFlags: 0
