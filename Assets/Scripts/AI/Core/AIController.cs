@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using AI.Stats;
 using AI.Decision;
+using AI.Visual;
 using Inventory;
 using Inventory.Items;
 using Inventory.Managers;
@@ -52,6 +53,7 @@ namespace AI.Core
         private CombatSystem2D combatSystem;
         private AICommunicator communicator;
         private AnimationController2D animController;
+        private AIWeaponVisualDisplay weaponVisual;
         
         // 状态
         private Vector2 moveDirection;
@@ -69,6 +71,7 @@ namespace AI.Core
         // DeepSeek决策
         private AIDecision currentDeepSeekDecision;
         private float lastDecisionTime = -10f;
+        private bool useDeepSeekForTrade = true; // 是否使用DeepSeek进行交易决策
         
         // 面对面交流
         private float faceToFaceRange = 2f;
@@ -85,6 +88,7 @@ namespace AI.Core
             ammoManager = GetComponent<AmmoManager>();
             combatSystem = GetComponent<CombatSystem2D>();
             animController = GetComponent<AnimationController2D>();
+            weaponVisual = GetComponent<AIWeaponVisualDisplay>();
             
             // 获取或创建通信组件
             communicator = GetComponent<AICommunicator>();
@@ -96,6 +100,20 @@ namespace AI.Core
             else
             {
                 Debug.Log($"[AIController] {name} 使用现有的AICommunicator");
+            }
+            
+            // 注册死亡事件监听器
+            if (aiStats != null && aiStats.OnDeath != null)
+            {
+                aiStats.OnDeath.AddListener(OnAIDeath);
+                Debug.Log($"[AIController] {name} 注册了死亡事件监听器");
+            }
+            
+            // 如果没有AIWeaponVisualDisplay组件，自动添加
+            if (weaponVisual == null)
+            {
+                weaponVisual = gameObject.AddComponent<AIWeaponVisualDisplay>();
+                Debug.Log($"[AIController] {name} 添加了AIWeaponVisualDisplay组件");
             }
             
             // 设置2D刚体
@@ -112,8 +130,49 @@ namespace AI.Core
             }
         }
         
+        private void OnDestroy()
+        {
+            // 清理死亡事件监听器
+            if (aiStats != null && aiStats.OnDeath != null)
+            {
+                aiStats.OnDeath.RemoveListener(OnAIDeath);
+            }
+        }
+        
+        /// <summary>
+        /// 处理AI死亡事件
+        /// </summary>
+        private void OnAIDeath(AIDeathEventArgs args)
+        {
+            Debug.Log($"[AIController] {name} 收到死亡事件 - 停止所有行动");
+            
+            // 立即停止所有移动和行动
+            StopMoving();
+            currentTarget = null;
+            currentDeepSeekDecision = null;
+            
+            // 停止攻击冷却
+            nextAttackTime = 0;
+            nextCommunicationTime = 0;
+            nextHelpTime = 0;
+            
+            // 重置所有帧标记
+            killedEnemyThisFrame = false;
+            collectedItemThisFrame = false;
+            reachedPortal = false;
+            
+            Debug.Log($"[AIController] {name} 已停止所有行动，等待复活");
+        }
+        
         private void Update()
         {
+            // 死亡检查 - 如果AI已死亡，停止所有行动
+            if (aiStats != null && aiStats.IsDead)
+            {
+                StopMoving();
+                return;
+            }
+            
             // 重置帧标记
             killedEnemyThisFrame = false;
             collectedItemThisFrame = false;
@@ -210,6 +269,12 @@ namespace AI.Core
             if (combatSystem != null)
             {
                 combatSystem.PerformAttack();
+                
+                // 触发武器视觉动画
+                if (weaponVisual != null)
+                {
+                    weaponVisual.PlayAttackAnimation();
+                }
             }
             
             nextAttackTime = Time.time + attackCooldown;
@@ -309,31 +374,39 @@ namespace AI.Core
             // AI与NPC的自动交互逻辑 - 不阻塞
             yield return null; // 立即返回，不等待
             
-            // 根据NPC类型执行不同的交互
-            bool interactionComplete = false;
-            switch (npc.NPCType)
+            // 使用DeepSeek决策是否交易
+            if (useDeepSeekForTrade)
             {
-                case NPCType.Merchant:
-                    interactionComplete = HandleMerchantInteraction(npc);
-                    break;
-                case NPCType.Doctor:
-                    interactionComplete = HandleDoctorInteraction(npc);
-                    break;
-                case NPCType.Restaurant:
-                    interactionComplete = HandleRestaurantInteraction(npc);
-                    break;
-                case NPCType.Blacksmith:
-                    interactionComplete = HandleBlacksmithInteraction(npc);
-                    break;
-                case NPCType.Tailor:
-                    interactionComplete = HandleTailorInteraction(npc);
-                    break;
+                RequestTradeDecision(npc);
             }
-            
-            // 如果交互完成，结束交互
-            if (interactionComplete)
+            else
             {
-                npc.EndInteraction();
+                // 使用默认逻辑
+                bool interactionComplete = false;
+                switch (npc.NPCType)
+                {
+                    case NPCType.Merchant:
+                        interactionComplete = HandleMerchantInteraction(npc);
+                        break;
+                    case NPCType.Doctor:
+                        interactionComplete = HandleDoctorInteraction(npc);
+                        break;
+                    case NPCType.Restaurant:
+                        interactionComplete = HandleRestaurantInteraction(npc);
+                        break;
+                    case NPCType.Blacksmith:
+                        interactionComplete = HandleBlacksmithInteraction(npc);
+                        break;
+                    case NPCType.Tailor:
+                        interactionComplete = HandleTailorInteraction(npc);
+                        break;
+                }
+                
+                // 如果交互完成，结束交互
+                if (interactionComplete)
+                {
+                    npc.EndInteraction();
+                }
             }
         }
         
@@ -1144,6 +1217,149 @@ namespace AI.Core
                     AnnounceGoingTo(npcMsg.Position);
                 }
             }
+        }
+        
+        /// <summary>
+        /// 请求DeepSeek进行交易决策
+        /// </summary>
+        private void RequestTradeDecision(NPCBase npc)
+        {
+            // 构建交易上下文
+            var context = new AI.Decision.AITradeContext
+            {
+                NPCType = npc.NPCType.ToString(),
+                NPCTypeEnum = npc.NPCType,
+                CurrentGold = currencyManager?.CurrentGold ?? 0,
+                CurrentHealth = aiStats.CurrentHealth,
+                MaxHealth = aiStats.Config.maxHealth,
+                CurrentHunger = aiStats.CurrentHunger,
+                MaxHunger = aiStats.Config.maxHunger,
+                CurrentThirst = aiStats.CurrentThirst,
+                MaxThirst = aiStats.Config.maxThirst,
+                EmotionMood = aiStats.GetMood(MoodDimension.Emotion),
+                SocialMood = aiStats.GetMood(MoodDimension.Social),
+                MentalityMood = aiStats.GetMood(MoodDimension.Mentality),
+                InventoryCapacity = inventory.Size,
+                UsedSlots = 0,
+                InventoryItems = new List<AI.Decision.ItemInfo>(),
+                Services = new List<AI.Decision.ServiceInfo>()
+            };
+            
+            // 填充背包物品
+            for (int i = 0; i < inventory.Size; i++)
+            {
+                var slot = inventory.GetSlot(i);
+                if (!slot.IsEmpty)
+                {
+                    context.UsedSlots++;
+                    context.InventoryItems.Add(new AI.Decision.ItemInfo
+                    {
+                        ItemName = slot.Item.ItemName,
+                        Quantity = slot.Quantity,
+                        BasePrice = slot.Item.SellPrice, // 使用卖出价格
+                        ItemType = slot.Item.GetType().Name
+                    });
+                }
+            }
+            
+            // 根据NPC类型填充商店物品或服务
+            switch (npc.NPCType)
+            {
+                case NPCType.Merchant:
+                    // TODO: 获取商人物品列表
+                    break;
+                    
+                case NPCType.Doctor:
+                    context.Services.Add(new AI.Decision.ServiceInfo
+                    {
+                        Name = "治疗",
+                        Price = 50,
+                        Description = "恢复生命值到满",
+                        Effect = "生命值+100%"
+                    });
+                    break;
+                    
+                case NPCType.Restaurant:
+                    context.Services.Add(new AI.Decision.ServiceInfo
+                    {
+                        Name = "免费水",
+                        Price = 0,
+                        Description = "免费提供饮用水",
+                        Effect = "口渴度+50"
+                    });
+                    context.Services.Add(new AI.Decision.ServiceInfo
+                    {
+                        Name = "简单套餐",
+                        Price = 20,
+                        Description = "基础食物",
+                        Effect = "饥饿度+60"
+                    });
+                    break;
+            }
+            
+            // 调用DeepSeek API
+            AI.Decision.DeepSeekAPIClient.Instance.RequestTradeDecision(context, (decision) =>
+            {
+                ExecuteTradeDecision(npc, decision);
+            });
+        }
+        
+        /// <summary>
+        /// 执行交易决策
+        /// </summary>
+        private void ExecuteTradeDecision(NPCBase npc, AI.Decision.AITradeDecision decision)
+        {
+            Debug.Log($"[AIController] 执行交易决策: {decision.TradeType} - {decision.ItemOrServiceName} - {decision.Reasoning}");
+            
+            if (!decision.ShouldTrade)
+            {
+                npc.EndInteraction();
+                return;
+            }
+            
+            // 根据决策类型执行
+            switch (decision.TradeType)
+            {
+                case AI.Decision.TradeType.Buy:
+                    if (npc is NPC.Types.MerchantNPC merchant)
+                    {
+                        merchant.HandleAIRequest($"buy_{decision.ItemOrServiceName}", gameObject);
+                    }
+                    break;
+                    
+                case AI.Decision.TradeType.Sell:
+                    if (npc is NPC.Types.MerchantNPC merchant2)
+                    {
+                        merchant2.HandleAIRequest($"sell_{decision.ItemOrServiceName}", gameObject);
+                    }
+                    break;
+                    
+                case AI.Decision.TradeType.Service:
+                    // 根据NPC类型调用具体的HandleAIRequest
+                    switch (npc.NPCType)
+                    {
+                        case NPCType.Doctor:
+                            if (npc is NPC.Types.DoctorNPC doctor)
+                                doctor.HandleAIRequest(decision.ItemOrServiceName.ToLower(), gameObject);
+                            break;
+                        case NPCType.Restaurant:
+                            if (npc is NPC.Types.RestaurantNPC restaurant)
+                                restaurant.HandleAIRequest(decision.ItemOrServiceName.ToLower(), gameObject);
+                            break;
+                        case NPCType.Blacksmith:
+                            if (npc is NPC.Types.BlacksmithNPC blacksmith)
+                                blacksmith.HandleAIRequest(decision.ItemOrServiceName.ToLower(), gameObject);
+                            break;
+                        case NPCType.Tailor:
+                            if (npc is NPC.Types.TailorNPC tailor)
+                                tailor.HandleAIRequest(decision.ItemOrServiceName.ToLower(), gameObject);
+                            break;
+                    }
+                    break;
+            }
+            
+            // 交易完成
+            npc.EndInteraction();
         }
         
         // Gizmos

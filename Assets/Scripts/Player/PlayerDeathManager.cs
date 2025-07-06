@@ -54,30 +54,15 @@ namespace Player
             Debug.Log($"[PlayerDeathManager] Initialized. AutoRespawn: {autoRespawn}, RespawnDelay: {respawnDelay}s");
             Debug.Log($"[PlayerDeathManager] Components - AIStats: {aiStats != null}, PlayerController: {playerController != null}");
             
-            // 在Start中再次尝试注册事件监听器，以确保AIStats已经初始化
-            if (aiStats != null)
-            {
-                Debug.Log("[PlayerDeathManager] Registering death event listener in Start...");
-                aiStats.OnDeath.RemoveListener(HandleDeath); // 先移除避免重复
-                aiStats.OnDeath.AddListener(HandleDeath);
-                Debug.Log("[PlayerDeathManager] Death event listener registered in Start");
-            }
+            // 确保事件监听器正确注册
+            RegisterDeathEventListener();
         }
         
         private void OnEnable()
         {
             if (aiStats != null)
             {
-                Debug.Log($"[PlayerDeathManager] OnEnable - aiStats exists, adding listener...");
-                Debug.Log($"[PlayerDeathManager] OnDeath event listener count before: {aiStats.OnDeath.GetPersistentEventCount()}");
-                
-                aiStats.OnDeath.AddListener(HandleDeath);
-                
-                Debug.Log($"[PlayerDeathManager] OnDeath event listener count after: {aiStats.OnDeath.GetPersistentEventCount()}");
-                Debug.Log("[PlayerDeathManager] OnDeath event listener added successfully");
-                
-                // 测试监听器
-                StartCoroutine(TestEventListener());
+                RegisterDeathEventListener();
             }
             else
             {
@@ -85,17 +70,41 @@ namespace Player
             }
         }
         
-        private System.Collections.IEnumerator TestEventListener()
-        {
-            yield return new WaitForSeconds(0.1f);
-            Debug.Log($"[PlayerDeathManager] Testing event listener - AIStats exists: {aiStats != null}, IsDead: {aiStats?.IsDead}");
-        }
         
         private void OnDisable()
         {
-            if (aiStats != null)
+            UnregisterDeathEventListener();
+        }
+        
+        private void OnDestroy()
+        {
+            UnregisterDeathEventListener();
+        }
+        
+        /// <summary>
+        /// 注册死亡事件监听器
+        /// </summary>
+        private void RegisterDeathEventListener()
+        {
+            if (aiStats == null || aiStats.OnDeath == null) return;
+            
+            // 先移除避免重复注册
+            aiStats.OnDeath.RemoveListener(HandleDeath);
+            aiStats.OnDeath.AddListener(HandleDeath);
+            
+            Debug.Log($"[PlayerDeathManager] Death event listener registered for {name}");
+            Debug.Log($"[PlayerDeathManager] Event exists: {aiStats.OnDeath != null}, Listener count: {aiStats.OnDeath.GetPersistentEventCount()}");
+        }
+        
+        /// <summary>
+        /// 取消注册死亡事件监听器
+        /// </summary>
+        private void UnregisterDeathEventListener()
+        {
+            if (aiStats != null && aiStats.OnDeath != null)
             {
                 aiStats.OnDeath.RemoveListener(HandleDeath);
+                Debug.Log($"[PlayerDeathManager] Death event listener unregistered for {name}");
             }
         }
         
@@ -127,14 +136,18 @@ namespace Player
                 if (autoRespawn && deathTime > 0) // 只要有死亡时间就检查
                 {
                     float timeSinceDeath = Time.time - deathTime;
-                    Debug.Log($"[PlayerDeathManager] Checking auto-respawn: timeSinceDeath={timeSinceDeath:F1}, respawnDelay={respawnDelay}, autoRespawn={autoRespawn}");
+                    // 减少日志spam，每秒只输出一次
+                    if (Time.frameCount % 60 == 0)
+                    {
+                        Debug.Log($"[PlayerDeathManager] Checking auto-respawn: timeSinceDeath={timeSinceDeath:F1}, respawnDelay={respawnDelay}, autoRespawn={autoRespawn}");
+                    }
                     
                     if (timeSinceDeath >= respawnDelay)
                     {
                         Debug.Log($"[PlayerDeathManager] Auto-respawn triggered! Time since death: {timeSinceDeath:F1}s");
                         Respawn();
                     }
-                    else
+                    else if (Time.frameCount % 60 == 0)
                     {
                         Debug.Log($"[PlayerDeathManager] Waiting for auto-respawn in {(respawnDelay - timeSinceDeath):F1}s");
                     }

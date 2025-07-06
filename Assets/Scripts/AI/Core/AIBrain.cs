@@ -151,6 +151,13 @@ namespace AI.Core
         
         public override void OnActionReceived(ActionBuffers actions)
         {
+            // 检查是否已经死亡
+            if (aiStats != null && aiStats.IsDead)
+            {
+                // AI已死亡，不执行任何动作
+                return;
+            }
+            
             // 离散动作空间
             int moveAction = actions.DiscreteActions[0]; // 0-4: 不动、上下左右
             int interactAction = actions.DiscreteActions[1]; // 0-2: 不交互、物品交互、面对面交流
@@ -269,39 +276,158 @@ namespace AI.Core
         
         public override void Heuristic(in ActionBuffers actionsOut)
         {
-            // 用于测试的启发式控制
+            // 用于测试的启发式控制 - 增强版
             var discreteActions = actionsOut.DiscreteActions;
             
-            // 简单的探索策略
-            if (currentTarget == Vector2.zero || Vector2.Distance(transform.position, currentTarget) < 0.5f)
-            {
-                // 选择新目标
-                currentTarget = new Vector2(
-                    Random.Range(-8f, 8f),
-                    Random.Range(-8f, 8f)
-                );
-            }
+            // 获取周围情况
+            var nearbyEnemies = perception.GetNearbyEnemies();
+            var nearbyItems = perception.GetNearbyItems();
+            var nearbyNPCs = perception.GetNearbyNPCs();
             
-            // 向目标移动
-            Vector2 direction = (currentTarget - (Vector2)transform.position).normalized;
-            if (Mathf.Abs(direction.x) > Mathf.Abs(direction.y))
+            // 优先级判断
+            bool shouldFight = nearbyEnemies.Count > 0 && aiStats.CurrentHealth > aiStats.Config.maxHealth * 0.3f;
+            bool shouldFlee = nearbyEnemies.Count > 0 && aiStats.CurrentHealth <= aiStats.Config.maxHealth * 0.3f;
+            bool shouldPickup = nearbyItems.Count > 0 && !shouldFlee;
+            bool needHealing = aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f;
+            
+            // 1. 战斗行为
+            if (shouldFight)
             {
-                discreteActions[0] = direction.x > 0 ? 4 : 3; // 右或左
+                var nearestEnemy = nearbyEnemies[0];
+                Vector2 toEnemy = (nearestEnemy.transform.position - transform.position).normalized;
+                
+                // 移动向敌人
+                if (Mathf.Abs(toEnemy.x) > Mathf.Abs(toEnemy.y))
+                {
+                    discreteActions[0] = toEnemy.x > 0 ? 4 : 3;
+                }
+                else
+                {
+                    discreteActions[0] = toEnemy.y > 0 ? 1 : 2;
+                }
+                
+                // 攻击决策
+                float distance = Vector2.Distance(transform.position, nearestEnemy.transform.position);
+                if (distance <= 2f) // 攻击范围内
+                {
+                    discreteActions[4] = 1; // 攻击
+                    Debug.Log($"[AIBrain] Heuristic: 攻击敌人 {nearestEnemy.name}");
+                }
+                else if (UnityEngine.Random.value < 0.1f) // 10%概率切换武器
+                {
+                    discreteActions[4] = 2; // 切换武器
+                }
             }
+            // 2. 逃跑行为
+            else if (shouldFlee)
+            {
+                var nearestEnemy = nearbyEnemies[0];
+                Vector2 awayFromEnemy = (transform.position - nearestEnemy.transform.position).normalized;
+                
+                // 远离敌人
+                if (Mathf.Abs(awayFromEnemy.x) > Mathf.Abs(awayFromEnemy.y))
+                {
+                    discreteActions[0] = awayFromEnemy.x > 0 ? 4 : 3;
+                }
+                else
+                {
+                    discreteActions[0] = awayFromEnemy.y > 0 ? 1 : 2;
+                }
+                
+                // 使用恢复物品
+                if (needHealing)
+                {
+                    discreteActions[2] = 1; // 使用第一个物品槽
+                }
+            }
+            // 3. 拾取物品
+            else if (shouldPickup)
+            {
+                var nearestItem = nearbyItems[0];
+                Vector2 toItem = (nearestItem.transform.position - transform.position).normalized;
+                
+                // 移动向物品
+                if (Mathf.Abs(toItem.x) > Mathf.Abs(toItem.y))
+                {
+                    discreteActions[0] = toItem.x > 0 ? 4 : 3;
+                }
+                else
+                {
+                    discreteActions[0] = toItem.y > 0 ? 1 : 2;
+                }
+                
+                // 靠近时交互
+                float distance = Vector2.Distance(transform.position, nearestItem.transform.position);
+                if (distance <= 2.5f)
+                {
+                    discreteActions[1] = 1; // 物品交互
+                    Debug.Log($"[AIBrain] Heuristic: 尝试拾取物品");
+                }
+            }
+            // 4. 与NPC交互
+            else if (nearbyNPCs.Count > 0 && (needHealing || aiStats.CurrentHunger < 50f || aiStats.CurrentThirst < 50f))
+            {
+                var nearestNPC = nearbyNPCs[0];
+                Vector2 toNPC = (nearestNPC.transform.position - transform.position).normalized;
+                
+                // 移动向NPC
+                if (Mathf.Abs(toNPC.x) > Mathf.Abs(toNPC.y))
+                {
+                    discreteActions[0] = toNPC.x > 0 ? 4 : 3;
+                }
+                else
+                {
+                    discreteActions[0] = toNPC.y > 0 ? 1 : 2;
+                }
+                
+                // 靠近时交互
+                float distance = Vector2.Distance(transform.position, nearestNPC.transform.position);
+                if (distance <= 2.5f)
+                {
+                    discreteActions[1] = 1; // 物品交互
+                    Debug.Log($"[AIBrain] Heuristic: 与NPC交互 {nearestNPC.NPCType}");
+                }
+            }
+            // 5. 随机探索
             else
             {
-                discreteActions[0] = direction.y > 0 ? 1 : 2; // 上或下
+                if (currentTarget == Vector2.zero || Vector2.Distance(transform.position, currentTarget) < 0.5f)
+                {
+                    // 选择新目标
+                    currentTarget = new Vector2(
+                        UnityEngine.Random.Range(-8f, 8f),
+                        UnityEngine.Random.Range(-8f, 8f)
+                    );
+                }
+                
+                // 向目标移动
+                Vector2 direction = (currentTarget - (Vector2)transform.position).normalized;
+                if (Mathf.Abs(direction.x) > Mathf.Abs(direction.y))
+                {
+                    discreteActions[0] = direction.x > 0 ? 4 : 3;
+                }
+                else
+                {
+                    discreteActions[0] = direction.y > 0 ? 1 : 2;
+                }
             }
             
-            // 低生命值时使用物品
-            if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.3f)
+            // 通信行为
+            if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.2f && UnityEngine.Random.value < 0.01f)
             {
-                discreteActions[2] = 1; // 尝试使用第一个物品槽
+                discreteActions[3] = 1; // 发送求救信号
             }
         }
         
         private void Update()
         {
+            // 检查是否已经死亡
+            if (aiStats != null && aiStats.IsDead)
+            {
+                // AI已死亡，停止所有决策
+                return;
+            }
+            
             // 定期决策
             if (Time.time >= nextDecisionTime)
             {
@@ -338,6 +464,12 @@ namespace AI.Core
         
         private bool ShouldUseDeepSeek()
         {
+            // 如果AI已经死亡，不请求DeepSeek决策
+            if (aiStats != null && aiStats.IsDead)
+            {
+                return false;
+            }
+            
             // 初始决策优先 - 游戏开始后进行一次决策
             if (!hasInitialDecision && Time.time > initialDecisionDelay)
             {
@@ -474,6 +606,13 @@ namespace AI.Core
         
         private void RequestDeepSeekDecision()
         {
+            // 在请求前再次检查是否死亡
+            if (aiStats != null && aiStats.IsDead)
+            {
+                Debug.Log("[AIBrain] 取消DeepSeek请求 - AI已死亡");
+                return;
+            }
+            
             if (deepSeekDecisionMaker != null)
             {
                 var context = GatherDecisionContext();
@@ -483,6 +622,13 @@ namespace AI.Core
         
         private AIDecisionContext GatherDecisionContext()
         {
+            // 检查必要组件是否存在
+            if (aiStats == null || aiStats.IsDead)
+            {
+                Debug.LogWarning("[AIBrain] 无法收集决策上下文 - AI已死亡或组件缺失");
+                return null;
+            }
+            
             return new AIDecisionContext
             {
                 Stats = aiStats,
@@ -497,6 +643,13 @@ namespace AI.Core
         
         private void OnDeepSeekDecisionReceived(AIDecision decision)
         {
+            // 在收到响应时检查是否已经死亡
+            if (aiStats != null && aiStats.IsDead)
+            {
+                Debug.Log("[AIBrain] 忽略DeepSeek响应 - AI已死亡");
+                return;
+            }
+            
             // 应用DeepSeek的决策建议
             if (decision != null)
             {

@@ -19,6 +19,14 @@ namespace AI.Decision
         /// </summary>
         public void RequestDecision(AIDecisionContext context, System.Action<AIDecision> callback)
         {
+            // 检查上下文是否有效
+            if (context == null || context.Stats == null || context.Stats.IsDead)
+            {
+                Debug.LogWarning("[DeepSeekDecisionMaker] 决策上下文无效或AI已死亡");
+                callback?.Invoke(null);
+                return;
+            }
+            
             if (useRealAPI && DeepSeekAPIClient.Instance != null)
             {
                 // 使用真实API

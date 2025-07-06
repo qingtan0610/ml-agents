@@ -160,6 +160,51 @@ namespace AI.Decision
             }));
         }
         
+        /// <summary>
+        /// 请求NPC交易决策
+        /// </summary>
+        public void RequestTradeDecision(AITradeContext context, Action<AITradeDecision> callback)
+        {
+            if (!CheckRateLimit())
+            {
+                Debug.LogWarning("[DeepSeekAPI] 达到请求速率限制");
+                callback?.Invoke(GetDefaultTradeDecision());
+                return;
+            }
+            
+            string prompt = BuildTradePrompt(context);
+            string cacheKey = $"trade_{prompt.GetHashCode()}";
+            
+            // 检查缓存
+            if (TryGetCachedResponse(cacheKey, out string cachedResponse))
+            {
+                var decision = ParseTradeResponse(cachedResponse);
+                callback?.Invoke(decision);
+                return;
+            }
+            
+            // 构建消息
+            var messages = new List<DeepSeekRequest.Message>
+            {
+                new DeepSeekRequest.Message("system", config.systemPrompt),
+                new DeepSeekRequest.Message("user", prompt)
+            };
+            
+            StartCoroutine(SendRequest(messages, response =>
+            {
+                if (response != null)
+                {
+                    CacheResponse(cacheKey, response);
+                    var decision = ParseTradeResponse(response);
+                    callback?.Invoke(decision);
+                }
+                else
+                {
+                    callback?.Invoke(GetDefaultTradeDecision());
+                }
+            }));
+        }
+        
         private IEnumerator SendRequest(List<DeepSeekRequest.Message> messages, Action<string> callback)
         {
             if (config == null || !config.IsValid())
@@ -317,10 +362,24 @@ namespace AI.Decision
             var sb = new StringBuilder();
             
             sb.AppendLine("当前AI状态和环境：");
-            sb.AppendLine($"生命值: {context.Stats.CurrentHealth}/{context.Stats.Config.maxHealth}");
-            sb.AppendLine($"饥饿度: {context.Stats.CurrentHunger}/{context.Stats.Config.maxHunger}");
-            sb.AppendLine($"口渴度: {context.Stats.CurrentThirst}/{context.Stats.Config.maxThirst}");
-            sb.AppendLine($"体力值: {context.Stats.CurrentStamina}/{context.Stats.Config.maxStamina}");
+            
+            // 清晰地表示状态
+            float healthPercent = context.Stats.CurrentHealth / context.Stats.Config.maxHealth;
+            float hungerPercent = context.Stats.CurrentHunger / context.Stats.Config.maxHunger;
+            float thirstPercent = context.Stats.CurrentThirst / context.Stats.Config.maxThirst;
+            float staminaPercent = context.Stats.CurrentStamina / context.Stats.Config.maxStamina;
+            
+            sb.AppendLine($"生命值: {context.Stats.CurrentHealth}/{context.Stats.Config.maxHealth} ({healthPercent:P0}) - " +
+                         (healthPercent < 0.3f ? "危险！需要治疗" : healthPercent < 0.6f ? "受伤" : "健康"));
+            
+            sb.AppendLine($"饥饿度: {context.Stats.CurrentHunger}/{context.Stats.Config.maxHunger} ({hungerPercent:P0}) - " +
+                         (hungerPercent < 0.3f ? "非常饥饿！需要立即进食" : hungerPercent < 0.6f ? "有些饿" : "吃饱了"));
+            
+            sb.AppendLine($"口渴度: {context.Stats.CurrentThirst}/{context.Stats.Config.maxThirst} ({thirstPercent:P0}) - " +
+                         (thirstPercent < 0.3f ? "非常口渴！需要立即喝水" : thirstPercent < 0.6f ? "有些渴" : "不渴"));
+            
+            sb.AppendLine($"体力值: {context.Stats.CurrentStamina}/{context.Stats.Config.maxStamina} ({staminaPercent:P0}) - " +
+                         (staminaPercent < 0.3f ? "精疲力竭！需要休息（停止移动）" : staminaPercent < 0.6f ? "有些累" : "精力充沛"));
             
             // 获取金币信息（通过CurrencyManager）
             var currencyManager = context.Stats.GetComponent<CurrencyManager>();
@@ -515,6 +574,127 @@ namespace AI.Decision
                 Priority = AIActionPriority.Normal,
                 Explanation = "默认决策",
                 SpecificActions = new List<string> { "继续探索" }
+            };
+        }
+        
+        private string BuildTradePrompt(AITradeContext context)
+        {
+            var sb = new StringBuilder();
+            
+            sb.AppendLine("【交易决策场景】");
+            sb.AppendLine($"NPC类型: {context.NPCType}");
+            sb.AppendLine($"AI当前金币: {context.CurrentGold}");
+            
+            // 当前状态
+            float healthPercent = context.CurrentHealth / context.MaxHealth;
+            float hungerPercent = context.CurrentHunger / context.MaxHunger;
+            float thirstPercent = context.CurrentThirst / context.MaxThirst;
+            
+            sb.AppendLine($"\n【AI当前状态】");
+            sb.AppendLine($"生命: {healthPercent:P0} - {(healthPercent < 0.3f ? "需要治疗!" : "状态良好")}");
+            sb.AppendLine($"饥饿: {hungerPercent:P0} - {(hungerPercent < 0.3f ? "需要食物!" : "不饿")}");
+            sb.AppendLine($"口渴: {thirstPercent:P0} - {(thirstPercent < 0.3f ? "需要水!" : "不渴")}");
+            
+            // 背包物品
+            if (context.InventoryItems != null && context.InventoryItems.Count > 0)
+            {
+                sb.AppendLine($"\n【背包物品】 (容量: {context.InventoryItems.Count}/{context.InventoryCapacity})");
+                foreach (var item in context.InventoryItems)
+                {
+                    sb.AppendLine($"- {item.ItemName} x{item.Quantity} (估值: {item.BasePrice * item.Quantity}金币)");
+                }
+            }
+            
+            // 商店物品（商人）
+            if (context.NPCType == "Merchant" && context.ShopItems != null)
+            {
+                sb.AppendLine($"\n【商店物品】");
+                foreach (var item in context.ShopItems)
+                {
+                    sb.AppendLine($"- {item.ItemName}: {item.Price}金币 {(item.IsOnSale ? "[特价]" : "")}");
+                }
+            }
+            
+            // 服务项目（医生、餐厅等）
+            if (context.Services != null && context.Services.Count > 0)
+            {
+                sb.AppendLine($"\n【可用服务】");
+                foreach (var service in context.Services)
+                {
+                    sb.AppendLine($"- {service.Name}: {service.Price}金币 - {service.Description}");
+                }
+            }
+            
+            sb.AppendLine($"\n【决策需求】");
+            sb.AppendLine("请根据以上信息决定：");
+            sb.AppendLine("1. 是否进行交易");
+            sb.AppendLine("2. 买什么/卖什么/使用什么服务");
+            sb.AppendLine("3. 数量和优先级");
+            
+            sb.AppendLine($"\n回复格式：");
+            sb.AppendLine("决定: [交易/不交易]");
+            sb.AppendLine("类型: [购买/出售/服务/无]");
+            sb.AppendLine("物品: [物品名称或服务名称]");
+            sb.AppendLine("数量: [数字]");
+            sb.AppendLine("理由: [一句话说明]");
+            
+            return sb.ToString();
+        }
+        
+        private AITradeDecision ParseTradeResponse(string response)
+        {
+            var decision = new AITradeDecision();
+            
+            try
+            {
+                string[] lines = response.Split('\n');
+                foreach (string line in lines)
+                {
+                    if (line.StartsWith("决定:") || line.StartsWith("Decision:"))
+                    {
+                        decision.ShouldTrade = line.Contains("交易") || line.Contains("Trade") || line.Contains("Yes");
+                    }
+                    else if (line.StartsWith("类型:") || line.StartsWith("Type:"))
+                    {
+                        string typeStr = line.Substring(line.IndexOf(':') + 1).Trim();
+                        if (typeStr.Contains("购买") || typeStr.Contains("Buy"))
+                            decision.TradeType = TradeType.Buy;
+                        else if (typeStr.Contains("出售") || typeStr.Contains("Sell"))
+                            decision.TradeType = TradeType.Sell;
+                        else if (typeStr.Contains("服务") || typeStr.Contains("Service"))
+                            decision.TradeType = TradeType.Service;
+                    }
+                    else if (line.StartsWith("物品:") || line.StartsWith("Item:"))
+                    {
+                        decision.ItemOrServiceName = line.Substring(line.IndexOf(':') + 1).Trim();
+                    }
+                    else if (line.StartsWith("数量:") || line.StartsWith("Quantity:"))
+                    {
+                        string quantityStr = line.Substring(line.IndexOf(':') + 1).Trim();
+                        int.TryParse(quantityStr, out decision.Quantity);
+                    }
+                    else if (line.StartsWith("理由:") || line.StartsWith("Reason:"))
+                    {
+                        decision.Reasoning = line.Substring(line.IndexOf(':') + 1).Trim();
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[DeepSeekAPI] 解析交易响应失败: {e.Message}");
+                return GetDefaultTradeDecision();
+            }
+            
+            return decision;
+        }
+        
+        private AITradeDecision GetDefaultTradeDecision()
+        {
+            return new AITradeDecision
+            {
+                ShouldTrade = false,
+                TradeType = TradeType.None,
+                Reasoning = "保存资源"
             };
         }
     }

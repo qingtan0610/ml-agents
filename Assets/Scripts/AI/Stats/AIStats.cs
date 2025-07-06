@@ -44,7 +44,10 @@ namespace AI.Stats
             ModifyStat(StatType.Health, -actualDamage, StatChangeReason.Combat);
             
             // 添加战斗日志
-            Debug.Log($"[AIStats] {name} 受到 {actualDamage} 点伤害来自 {attacker?.name ?? "Unknown"}");
+            Debug.Log($"[AIStats] {name} 受到 {actualDamage} 点伤害来自 {attacker?.name ?? "Unknown"}，剩余生命：{CurrentHealth}");
+            
+            // 立即检查死亡条件
+            CheckDeathConditions();
             
             // 应用Debuff
             if (damageInfo != null && damageInfo.appliedDebuffs != null)
@@ -221,17 +224,20 @@ namespace AI.Stats
             StatType? deathCause = null;
             
             // 使用GetRawStat获取真实值（包括负值）进行死亡检测
-            if (currentStats.ContainsKey(StatType.Health) && GetRawStat(StatType.Health) <= 0)
+            // 使用0.1f作为阈值，避免浮点数精度问题
+            const float deathThreshold = 0.1f;
+            
+            if (currentStats.ContainsKey(StatType.Health) && GetRawStat(StatType.Health) <= deathThreshold)
             {
                 deathCause = StatType.Health;
                 Debug.Log($"[AIStats] Death condition met: Health={GetRawStat(StatType.Health)} (raw), {GetStat(StatType.Health)} (display)");
             }
-            else if (currentStats.ContainsKey(StatType.Hunger) && GetRawStat(StatType.Hunger) <= 0)
+            else if (currentStats.ContainsKey(StatType.Hunger) && GetRawStat(StatType.Hunger) <= deathThreshold)
             {
                 deathCause = StatType.Hunger;
                 Debug.Log($"[AIStats] Death condition met: Hunger={GetRawStat(StatType.Hunger)} (raw), {GetStat(StatType.Hunger)} (display)");
             }
-            else if (currentStats.ContainsKey(StatType.Thirst) && GetRawStat(StatType.Thirst) <= 0)
+            else if (currentStats.ContainsKey(StatType.Thirst) && GetRawStat(StatType.Thirst) <= deathThreshold)
             {
                 deathCause = StatType.Thirst;
                 Debug.Log($"[AIStats] Death condition met: Thirst={GetRawStat(StatType.Thirst)} (raw), {GetStat(StatType.Thirst)} (display)");
@@ -246,14 +252,23 @@ namespace AI.Stats
         
         private void Die(StatType cause)
         {
-            Debug.Log($"[AIStats] Die() called - Setting isDead=true, cause={cause}");
+            Debug.Log($"[AIStats] ================== DEATH TRIGGERED ==================");
+            Debug.Log($"[AIStats] Die() called - GameObject: {gameObject.name}, cause={cause}, position={transform.position}");
+            Debug.Log($"[AIStats] Current Health: {CurrentHealth}, Hunger: {CurrentHunger}, Thirst: {CurrentThirst}");
             isDead = true;
             lastDeathCause = cause;
             
-            Debug.Log($"[AIStats] Invoking OnDeath event (event exists: {OnDeath != null})");
-            OnDeath?.Invoke(new AIDeathEventArgs(cause, transform.position, timeSinceSpawn));
+            Debug.Log($"[AIStats] OnDeath event exists: {OnDeath != null}, Listener count: {OnDeath.GetPersistentEventCount()}");
+            
+            // 创建死亡事件参数
+            var deathArgs = new AIDeathEventArgs(cause, transform.position, timeSinceSpawn);
+            
+            // 触发死亡事件
+            Debug.Log($"[AIStats] Invoking OnDeath event...");
+            OnDeath?.Invoke(deathArgs);
             
             Debug.Log($"[AIStats] Death complete. IsDead={isDead}");
+            Debug.Log($"[AIStats] ================== DEATH COMPLETE ==================");
         }
         
         public void Respawn(Vector3 spawnPosition, bool applyPenalties = true)
