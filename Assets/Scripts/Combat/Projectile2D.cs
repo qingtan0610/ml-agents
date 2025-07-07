@@ -20,6 +20,10 @@ namespace Combat
         
         private Rigidbody2D rb;
         
+        // Public properties
+        public GameObject Owner => shooter;
+        public float Damage => damage;
+        
         private void Awake()
         {
             rb = GetComponent<Rigidbody2D>();

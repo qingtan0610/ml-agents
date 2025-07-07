@@ -24,6 +24,10 @@ namespace Combat
         
         private float lastAttackTime;
         
+        // 战斗事件
+        public System.Action<GameObject, float> OnDamageDealt;
+        public System.Action<GameObject> OnKill;
+        
         private void Awake()
         {
             inventory = GetComponent<Inventory.Inventory>();
@@ -63,8 +67,9 @@ namespace Combat
             
             if (weapon == null)
             {
-                // 徒手攻击
-                PerformMeleeAttack(5f, 1.5f, AttackShape.Sector, 90f);
+                // 徒手攻击 - 提高伤害、范围和攻速
+                PerformMeleeAttack(15f, 2.0f, AttackShape.Sector, 120f);
+                attackCooldown = 0.3f; // 空手攻击更快
             }
             else if (weapon.IsRangedWeapon)
             {
@@ -343,6 +348,15 @@ namespace Combat
                 }
                 
                 damageable.TakeDamage(finalDamage, gameObject, damageInfo);
+                
+                // 触发伤害事件
+                OnDamageDealt?.Invoke(target, finalDamage);
+                
+                // 检查是否击杀
+                if (damageable.IsDead)
+                {
+                    OnKill?.Invoke(target);
+                }
                 
                 // 2D击退
                 if (knockback > 0)

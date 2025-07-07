@@ -33,6 +33,12 @@ namespace Loot
         private Vector3 startPosition;
         private bool isPicked = false;
         
+        // 公共属性
+        public ItemBase PickupItem => item;
+        public int Quantity => quantity;
+        public bool CanPickup => !isPicked;
+        public bool RequiresInteraction => requiresInteraction;
+        
         private void Awake()
         {
             // 如果没有手动赋值，尝试自动获取
@@ -261,6 +267,14 @@ namespace Loot
                     interactionPrompt.SetActive(false);
                 }
             }
+        }
+        
+        /// <summary>
+        /// 公共方法：直接拾取物品
+        /// </summary>
+        public void Pickup(GameObject picker)
+        {
+            TryPickup(picker);
         }
         
         private void TryPickup(GameObject picker)

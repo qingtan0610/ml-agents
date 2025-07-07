@@ -214,6 +214,10 @@ namespace AI.Decision
                 yield break;
             }
             
+            // 添加全局超时保护
+            float startTime = Time.time;
+            float maxWaitTime = 30f; // 最多等待30秒
+            
             var request = new DeepSeekRequest
             {
                 model = config.GetModel(),
@@ -230,6 +234,14 @@ namespace AI.Decision
             Debug.Log($"[DeepSeekAPI] 发送请求: {jsonRequest}");
             byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonRequest);
             
+            // 检查全局超时
+            if (Time.time - startTime > maxWaitTime)
+            {
+                Debug.LogError("[DeepSeekAPI] 全局超时，取消请求");
+                callback?.Invoke(null);
+                yield break;
+            }
+            
             int retryCount = 0;
             while (retryCount < config.maxRetries)
             {
@@ -242,6 +254,14 @@ namespace AI.Decision
                     webRequest.timeout = (int)config.requestTimeout;
                     
                     yield return webRequest.SendWebRequest();
+                    
+                    // 再次检查全局超时
+                    if (Time.time - startTime > maxWaitTime)
+                    {
+                        Debug.LogError("[DeepSeekAPI] 请求超时，中断请求");
+                        callback?.Invoke(null);
+                        yield break;
+                    }
                     
                     if (webRequest.result == UnityWebRequest.Result.Success)
                     {
@@ -285,6 +305,8 @@ namespace AI.Decision
                         {
                             Debug.LogError($"[DeepSeekAPI] 解析响应失败: {e.Message}");
                             Debug.LogError($"原始响应: {webRequest.downloadHandler.text}");
+                            callback?.Invoke(null);
+                            yield break;
                         }
                     }
                     else
@@ -297,12 +319,26 @@ namespace AI.Decision
                             Debug.LogWarning("[DeepSeekAPI] 触发API速率限制，等待重试...");
                             yield return new WaitForSeconds(config.retryDelay * (retryCount + 1));
                         }
+                        else
+                        {
+                            // 非速率限制的错误，直接返回错误
+                            Debug.LogError($"[DeepSeekAPI] 非速率限制错误，停止重试");
+                            callback?.Invoke(null);
+                            yield break;
+                        }
                     }
                 }
                 
                 retryCount++;
                 if (retryCount < config.maxRetries)
                 {
+                    // 检查是否超时
+                    if (Time.time - startTime > maxWaitTime)
+                    {
+                        Debug.LogError("[DeepSeekAPI] 重试超时，停止请求");
+                        callback?.Invoke(null);
+                        yield break;
+                    }
                     yield return new WaitForSeconds(config.retryDelay);
                 }
             }

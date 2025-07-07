@@ -37,6 +37,10 @@ namespace AI.Core
         }
         
         // 更新记忆
+        // 清理记忆的间隔时间
+        private float lastCleanupTime = 0f;
+        private const float CLEANUP_INTERVAL = 5f; // 每5秒清理一次而不是每帧
+        
         public void Update(AIPerception perception)
         {
             if (perception == null) return;
@@ -55,8 +59,12 @@ namespace AI.Core
                 UpdateNPCMemory(npc);
             }
             
-            // 清理过期记忆
-            CleanupOldMemories();
+            // 定期清理过期记忆（避免每帧执行LINQ操作）
+            if (Time.time - lastCleanupTime > CLEANUP_INTERVAL)
+            {
+                lastCleanupTime = Time.time;
+                CleanupOldMemories();
+            }
         }
         
         private void UpdateRoomMemory(RoomInfo roomInfo)
@@ -248,25 +256,47 @@ namespace AI.Core
         // 清理过期记忆
         private void CleanupOldMemories()
         {
-            // 清理过期的危险区域
+            // 清理过期的危险区域 - 使用RemoveAll比较安全
             dangerZones.RemoveAll(z => z.ExpiryTime < Time.time);
             
-            // 清理太久没访问的位置
-            var keysToRemove = importantLocations
-                .Where(kvp => kvp.Value.Importance < 5 && Time.time - kvp.Value.LastVisitTime > 600f)
-                .Select(kvp => kvp.Key)
-                .ToList();
+            // 清理太久没访问的位置 - 避免LINQ操作，使用传统循环
+            var keysToRemove = new List<string>();
+            foreach (var kvp in importantLocations)
+            {
+                if (kvp.Value.Importance < 5 && Time.time - kvp.Value.LastVisitTime > 600f)
+                {
+                    keysToRemove.Add(kvp.Key);
+                }
+            }
             
+            // 删除标记的键
             foreach (var key in keysToRemove)
             {
                 importantLocations.Remove(key);
+            }
+            
+            // 防止内存无限增长
+            if (keysToRemove.Count > 0)
+            {
+                Debug.Log($"[AIMemory] 清理了 {keysToRemove.Count} 个过期位置记忆");
             }
         }
         
         // 查询接口
         public Dictionary<string, LocationMemory> GetImportantLocations() => new Dictionary<string, LocationMemory>(importantLocations);
         public List<EventMemory> GetRecentEvents(int count = 10) => recentEvents.TakeLast(count).ToList();
-        public List<DangerZone> GetDangerZones() => dangerZones.Where(z => z.ExpiryTime > Time.time).ToList();
+        public List<DangerZone> GetDangerZones() 
+        {
+            var activeDangerZones = new List<DangerZone>();
+            foreach (var zone in dangerZones)
+            {
+                if (zone.ExpiryTime > Time.time)
+                {
+                    activeDangerZones.Add(zone);
+                }
+            }
+            return activeDangerZones;
+        }
         public List<Vector2> GetResourceLocations(ResourceType type) => new List<Vector2>(resourceLocations[type]);
         public Dictionary<string, object> GetAllMemories()
         {
@@ -319,6 +349,23 @@ namespace AI.Core
             {
                 list.Clear();
             }
+        }
+        
+        // 新增的辅助方法
+        public bool KnowsPortalLocation()
+        {
+            return importantLocations.ContainsKey("Portal");
+        }
+        
+        public float GetExplorationProgress()
+        {
+            // 基于访问的重要位置数量估算探索进度
+            int knownLocations = importantLocations.Count;
+            int knownResources = resourceLocations.Values.Sum(list => list.Count);
+            
+            // 假设完全探索需要知道20个位置
+            float progress = (knownLocations + knownResources * 0.5f) / 20f;
+            return Mathf.Clamp01(progress);
         }
         
         // 辅助方法

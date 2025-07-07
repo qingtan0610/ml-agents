@@ -11,9 +11,9 @@ GameObject:
   - component: {fileID: 6618643119349745774}
   - component: {fileID: 2879814435799767428}
   - component: {fileID: 4221315057038593833}
-  m_Layer: 0
+  m_Layer: 15
   m_Name: TeleportDevice
-  m_TagString: Untagged
+  m_TagString: Interactive
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
@@ -111,3 +111,4 @@ MonoBehaviour:
   pulseIntensity: 0.3
   isActivating: 0
   isActivated: 0
+  currentPlayerCount: 0

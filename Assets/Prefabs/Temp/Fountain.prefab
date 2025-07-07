@@ -12,9 +12,9 @@ GameObject:
   - component: {fileID: 3276099013967620471}
   - component: {fileID: 8818726252169368433}
   - component: {fileID: 7692188463554002713}
-  m_Layer: 0
+  m_Layer: 15
   m_Name: Fountain
-  m_TagString: Untagged
+  m_TagString: Interactive
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0

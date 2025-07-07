@@ -12,6 +12,8 @@ TagManager:
   - Door
   - Floor
   - Pickup
+  - Trap
+  - Decoration
   layers:
   - Default
   - TransparentFX
@@ -30,8 +32,8 @@ TagManager:
   - Item
   - Interactive
   - Projectile
-  - 
-  - 
+  - Trap
+  - Decoration
   - 
   - 
   - 

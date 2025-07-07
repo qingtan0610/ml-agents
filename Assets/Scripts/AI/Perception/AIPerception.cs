@@ -7,6 +7,9 @@ using Inventory.Items;
 using Rooms;
 using Rooms.Core;
 using Loot;
+using Combat;
+using AI.Core;
+using Interactables;
 
 namespace AI.Perception
 {
@@ -24,6 +27,8 @@ namespace AI.Perception
         [SerializeField] private float enemyDetectionRange = 10f;
         [SerializeField] private float npcDetectionRange = 8f;
         [SerializeField] private float itemDetectionRange = 5f;
+        [SerializeField] private float projectileDetectionRange = 8f; // 弹药检测范围
+        [SerializeField] private float teammateDetectionRange = 15f; // 队友检测范围
         [SerializeField] private float updateInterval = 0.2f;
         
         [Header("Current Perception")]
@@ -31,13 +36,21 @@ namespace AI.Perception
         [SerializeField] private List<Enemy2D> nearbyEnemies = new List<Enemy2D>();
         [SerializeField] private List<NPCBase> nearbyNPCs = new List<NPCBase>();
         [SerializeField] private List<GameObject> nearbyItems = new List<GameObject>();
+        [SerializeField] private List<Combat.Projectile2D> nearbyProjectiles = new List<Combat.Projectile2D>();
+        [SerializeField] private List<AIBrain> nearbyTeammates = new List<AIBrain>();
         [SerializeField] private SimplifiedRoom currentRoom;
+        
+        // 队友战斗状态追踪
+        private Dictionary<AIBrain, float> teammateLastAttackTime = new Dictionary<AIBrain, float>();
         
         // 事件
         public System.Action<SimplifiedRoom> OnRoomDiscovered;
         public System.Action<Enemy2D> OnEnemyDetected;
         public System.Action<NPCBase> OnNPCDetected;
         public System.Action<GameObject> OnItemDetected;
+        public System.Action<Combat.Projectile2D> OnProjectileDetected;
+        public System.Action<AIBrain> OnTeammateDetected;
+        public System.Action<AIBrain, Enemy2D> OnTeammateAttacking;
         
         private float nextUpdateTime = 0f;
         private HashSet<SimplifiedRoom> discoveredRooms = new HashSet<SimplifiedRoom>();
@@ -56,6 +69,20 @@ namespace AI.Perception
             
             // 缓存MapGenerator引用
             mapGenerator = FindObjectOfType<MapGenerator>();
+            
+            // 订阅所有AI的攻击事件以追踪队友战斗状态
+            var allAIs = FindObjectsOfType<AIBrain>();
+            foreach (var ai in allAIs)
+            {
+                if (ai != this)
+                {
+                    var combatSystem = ai.GetComponent<CombatSystem2D>();
+                    if (combatSystem != null)
+                    {
+                        combatSystem.OnDamageDealt += (target, damage) => OnTeammateAttack(ai, target);
+                    }
+                }
+            }
         }
         
         private void Update()
@@ -82,6 +109,8 @@ namespace AI.Perception
             DetectNearbyEnemies();
             DetectNearbyNPCs();
             DetectNearbyItems();
+            DetectNearbyProjectiles();
+            DetectNearbyTeammates();
         }
         
         private void UpdateCurrentRoom()
@@ -171,36 +200,58 @@ namespace AI.Perception
         {
             nearbyEnemies.Clear();
             
-            // 使用OverlapCircle检测敌人
-            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, enemyDetectionRange);
+            // 使用OverlapCircle检测敌人 - 使用Layer 12 (Enemy)
+            int enemyLayer = 1 << 12; // Layer 12 是 Enemy
+            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, enemyDetectionRange, enemyLayer);
+            
+            // 调试输出
+            if (colliders.Length > 0)
+            {
+                Debug.Log($"[AIPerception] {name} 检测到 {colliders.Length} 个Enemy层的碰撞体");
+            }
             
             foreach (var collider in colliders)
             {
                 var enemy = collider.GetComponent<Enemy2D>();
-                if (enemy != null && enemy.gameObject.activeSelf && CanSee(enemy.transform.position))
+                if (enemy != null && enemy.gameObject.activeSelf)
                 {
+                    // 暂时跳过CanSee检查，先确保基础检测工作
                     nearbyEnemies.Add(enemy);
+                    Debug.Log($"[AIPerception] {name} 检测到敌人: {enemy.name} 距离: {Vector2.Distance(transform.position, enemy.transform.position)}");
                     
                     // 触发事件
                     OnEnemyDetected?.Invoke(enemy);
                 }
+                else if (enemy == null)
+                {
+                    Debug.LogWarning($"[AIPerception] 在Enemy层找到碰撞体 {collider.name} 但没有Enemy2D组件");
+                }
             }
             
-            // 按距离排序
-            nearbyEnemies = nearbyEnemies.OrderBy(e => 
-                Vector2.Distance(transform.position, e.transform.position)).ToList();
+            // 手动排序避免LINQ的ToList操作 - 防止卡死
+            if (nearbyEnemies.Count > 1)
+            {
+                nearbyEnemies.Sort((e1, e2) => 
+                {
+                    float dist1 = Vector2.Distance(transform.position, e1.transform.position);
+                    float dist2 = Vector2.Distance(transform.position, e2.transform.position);
+                    return dist1.CompareTo(dist2);
+                });
+            }
         }
         
         private void DetectNearbyNPCs()
         {
             nearbyNPCs.Clear();
             
-            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, npcDetectionRange);
+            // 使用Layer 13 (NPC)
+            int npcLayer = 1 << 13;
+            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, npcDetectionRange, npcLayer);
             
             foreach (var collider in colliders)
             {
                 var npc = collider.GetComponent<NPCBase>();
-                if (npc != null && CanSee(npc.transform.position))
+                if (npc != null) // 暂时跳过CanSee检查
                 {
                     nearbyNPCs.Add(npc);
                     
@@ -214,46 +265,284 @@ namespace AI.Perception
         {
             nearbyItems.Clear();
             
-            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, itemDetectionRange);
+            // 检测多个层: Item (14), Interactive (15)
+            int itemLayers = (1 << 14) | (1 << 15);
+            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, itemDetectionRange, itemLayers);
+            
+            // 也检测所有层的Pickup标签物体
+            Collider2D[] allColliders = Physics2D.OverlapCircleAll(transform.position, itemDetectionRange);
+            
+            // 合并结果
+            var combinedColliders = new List<Collider2D>(colliders);
+            foreach (var col in allColliders)
+            {
+                if (col.CompareTag("Pickup") && !combinedColliders.Contains(col))
+                {
+                    combinedColliders.Add(col);
+                }
+            }
+            
+            foreach (var collider in combinedColliders)
+            {
+                bool isInteractable = false;
+                
+                // 检查是否是可拾取物品
+                if (collider.CompareTag("Pickup") || collider.GetComponent<Pickup>() != null ||
+                    collider.GetComponent<UnifiedPickup>() != null)
+                {
+                    isInteractable = true;
+                }
+                
+                // 检查是否是交互物品（宝箱、泉水、传送门等）
+                if (collider.GetComponent<IInteractable>() != null)
+                {
+                    isInteractable = true;
+                }
+                
+                // 检查特定的交互物品类型
+                if (collider.GetComponent<Interactables.TreasureChest>() != null ||
+                    collider.GetComponent<Interactables.Fountain>() != null ||
+                    collider.GetComponent<Interactables.TeleportDevice>() != null ||
+                    collider.CompareTag("Interactive"))
+                {
+                    isInteractable = true;
+                }
+                
+                if (isInteractable) // 暂时跳过CanSee检查
+                {
+                    nearbyItems.Add(collider.gameObject);
+                    
+                    // 触发事件
+                    OnItemDetected?.Invoke(collider.gameObject);
+                }
+            }
+        }
+        
+        private void DetectNearbyProjectiles()
+        {
+            nearbyProjectiles.Clear();
+            
+            // 检测附近的弹药 - 使用Layer 16 (Projectile)
+            int projectileLayer = 1 << 16;
+            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, projectileDetectionRange, projectileLayer);
             
             foreach (var collider in colliders)
             {
-                // 检查是否是可拾取物品
-                if (collider.CompareTag("Pickup") || collider.GetComponent<Pickup>() != null)
+                var projectile = collider.GetComponent<Combat.Projectile2D>();
+                if (projectile != null && projectile.gameObject.activeSelf)
                 {
-                    if (CanSee(collider.transform.position))
+                    // 只检测敌人发射的弹药
+                    if (projectile.Owner != null && (projectile.Owner.CompareTag("Enemy") || projectile.Owner.layer == 12))
                     {
-                        nearbyItems.Add(collider.gameObject);
+                        nearbyProjectiles.Add(projectile);
                         
                         // 触发事件
-                        OnItemDetected?.Invoke(collider.gameObject);
+                        OnProjectileDetected?.Invoke(projectile);
+                        
+                        // 如果弹药正朝向AI飞来，给予警告
+                        var rb = projectile.GetComponent<Rigidbody2D>();
+                        if (rb != null && rb.velocity.magnitude > 0.1f)
+                        {
+                            Vector2 toAI = (transform.position - projectile.transform.position).normalized;
+                            Vector2 projectileDir = rb.velocity.normalized;
+                            float dot = Vector2.Dot(projectileDir, toAI);
+                            
+                            if (dot > 0.7f) // 弹药大致朝向AI
+                            {
+                                Debug.Log($"[AIPerception] {name} 检测到来袭弹药！距离: {Vector2.Distance(transform.position, projectile.transform.position):F1}");
+                            }
+                        }
                     }
                 }
+            }
+            
+            // 按距离排序
+            if (nearbyProjectiles.Count > 1)
+            {
+                nearbyProjectiles.Sort((p1, p2) => 
+                {
+                    float dist1 = Vector2.Distance(transform.position, p1.transform.position);
+                    float dist2 = Vector2.Distance(transform.position, p2.transform.position);
+                    return dist1.CompareTo(dist2);
+                });
+            }
+        }
+        
+        private void DetectNearbyTeammates()
+        {
+            nearbyTeammates.Clear();
+            
+            // 检测附近的队友AI - 使用Layer 11 (Player)
+            int playerLayer = 1 << 11;
+            Collider2D[] colliders = Physics2D.OverlapCircleAll(transform.position, teammateDetectionRange, playerLayer);
+            
+            foreach (var collider in colliders)
+            {
+                // 跳过自己
+                if (collider.gameObject == gameObject) continue;
+                
+                // 检查是否是AI队友
+                var otherBrain = collider.GetComponent<AIBrain>();
+                if (otherBrain != null && otherBrain.gameObject.activeSelf)
+                {
+                    nearbyTeammates.Add(otherBrain);
+                    
+                    // 触发事件
+                    OnTeammateDetected?.Invoke(otherBrain);
+                    
+                    // 检查队友是否在战斗
+                    var combatSystem = otherBrain.GetComponent<Combat.CombatSystem2D>();
+                    if (combatSystem != null)
+                    {
+                        // 检查最近的攻击时间
+                        float lastAttackTime = 0f;
+                        if (teammateLastAttackTime.TryGetValue(otherBrain, out lastAttackTime))
+                        {
+                            if (Time.time - lastAttackTime < 2f) // 2秒内有攻击行为
+                            {
+                                // 找到队友正在攻击的敌人
+                                var teammateController = otherBrain.GetComponent<AIController>();
+                                if (teammateController != null && teammateController.GetCurrentTarget() != null)
+                                {
+                                    var targetEnemy = teammateController.GetCurrentTarget().GetComponent<Enemy2D>();
+                                    if (targetEnemy != null)
+                                    {
+                                        OnTeammateAttacking?.Invoke(otherBrain, targetEnemy);
+                                        Debug.Log($"[AIPerception] {name} 发现队友 {otherBrain.name} 正在攻击 {targetEnemy.name}");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 按距离排序
+            if (nearbyTeammates.Count > 1)
+            {
+                nearbyTeammates.Sort((t1, t2) => 
+                {
+                    float dist1 = Vector2.Distance(transform.position, t1.transform.position);
+                    float dist2 = Vector2.Distance(transform.position, t2.transform.position);
+                    return dist1.CompareTo(dist2);
+                });
             }
         }
         
         private bool CanSee(Vector3 targetPosition)
         {
+            // 防止NaN和无效位置导致卡死
+            if (float.IsNaN(targetPosition.x) || float.IsNaN(targetPosition.y) || 
+                float.IsInfinity(targetPosition.x) || float.IsInfinity(targetPosition.y))
+            {
+                return false;
+            }
+            
             // 视线检测
             Vector2 direction = targetPosition - transform.position;
             float distance = direction.magnitude;
+            
+            // 防止距离为0或无效值
+            if (distance < 0.01f || float.IsNaN(distance) || float.IsInfinity(distance))
+                return false;
             
             // 检查是否在视野范围内
             if (distance > visionRange && !hasEnhancedVision)
                 return false;
             
-            // 射线检测是否有障碍物
-            RaycastHit2D hit = Physics2D.Raycast(transform.position, direction.normalized, 
-                distance, visionBlockingLayers);
+            // 防止方向向量无效
+            Vector2 normalizedDirection = direction.normalized;
+            if (float.IsNaN(normalizedDirection.x) || float.IsNaN(normalizedDirection.y))
+                return false;
             
-            return hit.collider == null;
+            // 射线检测是否有障碍物 - 添加安全检查
+            try
+            {
+                RaycastHit2D hit = Physics2D.Raycast(transform.position, normalizedDirection, 
+                    distance, visionBlockingLayers);
+                
+                return hit.collider == null;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[AIPerception] 射线检测异常: {e.Message}");
+                return false;
+            }
         }
         
-        // 公共接口
-        public List<RoomInfo> GetVisibleRooms() => new List<RoomInfo>(visibleRooms);
-        public List<Enemy2D> GetNearbyEnemies() => new List<Enemy2D>(nearbyEnemies);
-        public List<NPCBase> GetNearbyNPCs() => new List<NPCBase>(nearbyNPCs);
-        public List<GameObject> GetNearbyItems() => new List<GameObject>(nearbyItems);
+        // 缓存的公共接口结果 - 避免频繁的List创建
+        private List<RoomInfo> cachedVisibleRooms = new List<RoomInfo>();
+        private List<Enemy2D> cachedNearbyEnemies = new List<Enemy2D>();
+        private List<NPCBase> cachedNearbyNPCs = new List<NPCBase>();
+        private List<GameObject> cachedNearbyItems = new List<GameObject>();
+        private List<Combat.Projectile2D> cachedNearbyProjectiles = new List<Combat.Projectile2D>();
+        private List<AIBrain> cachedNearbyTeammates = new List<AIBrain>();
+        private float lastCacheUpdateTime = 0f;
+        private const float CACHE_UPDATE_INTERVAL = 0.1f; // 每0.1秒更新一次缓存
+        
+        // 公共接口 - 使用缓存避免频繁的List创建
+        public List<RoomInfo> GetVisibleRooms() 
+        {
+            UpdateCacheIfNeeded();
+            return cachedVisibleRooms;
+        }
+        
+        public List<Enemy2D> GetNearbyEnemies() 
+        {
+            UpdateCacheIfNeeded();
+            return cachedNearbyEnemies;
+        }
+        
+        public List<NPCBase> GetNearbyNPCs() 
+        {
+            UpdateCacheIfNeeded();
+            return cachedNearbyNPCs;
+        }
+        
+        public List<GameObject> GetNearbyItems() 
+        {
+            UpdateCacheIfNeeded();
+            return cachedNearbyItems;
+        }
+        
+        public List<Projectile2D> GetNearbyProjectiles()
+        {
+            UpdateCacheIfNeeded();
+            return cachedNearbyProjectiles;
+        }
+        
+        public List<AIBrain> GetNearbyTeammates()
+        {
+            UpdateCacheIfNeeded();
+            return cachedNearbyTeammates;
+        }
+        
+        private void UpdateCacheIfNeeded()
+        {
+            if (Time.time - lastCacheUpdateTime > CACHE_UPDATE_INTERVAL)
+            {
+                // 更新缓存
+                cachedVisibleRooms.Clear();
+                cachedVisibleRooms.AddRange(visibleRooms);
+                
+                cachedNearbyEnemies.Clear();
+                cachedNearbyEnemies.AddRange(nearbyEnemies);
+                
+                cachedNearbyNPCs.Clear();
+                cachedNearbyNPCs.AddRange(nearbyNPCs);
+                
+                cachedNearbyItems.Clear();
+                cachedNearbyItems.AddRange(nearbyItems);
+                
+                cachedNearbyProjectiles.Clear();
+                cachedNearbyProjectiles.AddRange(nearbyProjectiles);
+                
+                cachedNearbyTeammates.Clear();
+                cachedNearbyTeammates.AddRange(nearbyTeammates);
+                
+                lastCacheUpdateTime = Time.time;
+            }
+        }
         public SimplifiedRoom GetCurrentRoom() => currentRoom;
         public bool DiscoveredNewRoom() => discoveredNewRoomThisFrame;
         
@@ -308,6 +597,39 @@ namespace AI.Perception
             
             Gizmos.color = Color.blue;
             Gizmos.DrawWireSphere(transform.position, itemDetectionRange);
+            
+            // 绘制弹药检测范围
+            Gizmos.color = Color.magenta;
+            Gizmos.DrawWireSphere(transform.position, projectileDetectionRange);
+            
+            // 绘制队友检测范围
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawWireSphere(transform.position, teammateDetectionRange);
+        }
+        
+        // 调试方法
+        public void DebugPerception()
+        {
+            Debug.Log($"[AIPerception] {name} 感知调试:");
+            Debug.Log($"  - 检测到敌人: {nearbyEnemies.Count}");
+            foreach (var enemy in nearbyEnemies)
+            {
+                Debug.Log($"    * {enemy.name} 距离: {Vector2.Distance(transform.position, enemy.transform.position):F1}");
+            }
+            Debug.Log($"  - 检测到NPC: {nearbyNPCs.Count}");
+            Debug.Log($"  - 检测到物品: {nearbyItems.Count}");
+            Debug.Log($"  - 检测到弹药: {nearbyProjectiles.Count}");
+            Debug.Log($"  - 检测到队友: {nearbyTeammates.Count}");
+        }
+        
+        // 队友攻击回调
+        private void OnTeammateAttack(AIBrain teammate, GameObject target)
+        {
+            if (teammate != null && target != null)
+            {
+                // 记录队友的攻击时间
+                teammateLastAttackTime[teammate] = Time.time;
+            }
         }
     }
     

@@ -12,9 +12,9 @@ GameObject:
   - component: {fileID: 5659971574951503094}
   - component: {fileID: 6435323004581886318}
   - component: {fileID: 7724006119559957088}
-  m_Layer: 0
+  m_Layer: 15
   m_Name: TreasureChest
-  m_TagString: Untagged
+  m_TagString: Interactive
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0

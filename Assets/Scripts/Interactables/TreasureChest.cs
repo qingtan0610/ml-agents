@@ -43,6 +43,10 @@ namespace Interactables
         [SerializeField] private string lockedPromptText = "需要钥匙";
         [SerializeField] private string emptyPromptText = "宝箱已打开";
         
+        // 公共属性
+        public bool IsLocked => isLocked;
+        public bool IsOpened => isOpened;
+        
         
         [System.Serializable]
         public class GuaranteedDrop

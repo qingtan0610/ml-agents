@@ -20,6 +20,18 @@ using Visuals;
 namespace AI.Core
 {
     /// <summary>
+    /// 交互优先级
+    /// </summary>
+    public enum InteractionPriority
+    {
+        None = 0,
+        Low = 1,
+        Medium = 2,
+        High = 3,
+        Critical = 4
+    }
+    
+    /// <summary>
     /// AI控制器 - 负责执行AI的具体行动
     /// </summary>
     [RequireComponent(typeof(Rigidbody2D))]
@@ -33,7 +45,7 @@ namespace AI.Core
         
         [Header("Combat")]
         [SerializeField] private float attackCooldown = 0.5f;
-        [SerializeField] private float attackRange = 1.5f;
+        [SerializeField] private float attackRange = 3.5f; // 增加攻击范围
         
         [Header("Interaction")]
         [SerializeField] private float interactionRange = 2.5f;
@@ -54,6 +66,8 @@ namespace AI.Core
         private AICommunicator communicator;
         private AnimationController2D animController;
         private AIWeaponVisualDisplay weaponVisual;
+        private AIItemEvaluator itemEvaluator;
+        private AIEconomicSystem economicSystem;
         
         // 状态
         private Vector2 moveDirection;
@@ -114,6 +128,22 @@ namespace AI.Core
             {
                 weaponVisual = gameObject.AddComponent<AIWeaponVisualDisplay>();
                 Debug.Log($"[AIController] {name} 添加了AIWeaponVisualDisplay组件");
+            }
+            
+            // 获取或添加物品评估器
+            itemEvaluator = GetComponent<AIItemEvaluator>();
+            if (itemEvaluator == null)
+            {
+                itemEvaluator = gameObject.AddComponent<AIItemEvaluator>();
+                Debug.Log($"[AIController] 为 {name} 添加了AIItemEvaluator");
+            }
+            
+            // 获取或添加经济系统
+            economicSystem = GetComponent<AIEconomicSystem>();
+            if (economicSystem == null)
+            {
+                economicSystem = gameObject.AddComponent<AIEconomicSystem>();
+                Debug.Log($"[AIController] 为 {name} 添加了AIEconomicSystem");
             }
             
             // 设置2D刚体
@@ -247,14 +277,28 @@ namespace AI.Core
         // 战斗控制
         public void Attack(GameObject target)
         {
-            if (target == null || Time.time < nextAttackTime || aiStats.IsDead) return;
+            if (target == null || Time.time < nextAttackTime || aiStats.IsDead) 
+            {
+                Debug.Log($"[AIController] {name} 攻击失败 - target null: {target == null}, 冷却中: {Time.time < nextAttackTime}, 已死亡: {aiStats.IsDead}");
+                return;
+            }
             
             var enemy = target.GetComponent<Enemy2D>();
-            if (enemy == null || !enemy.IsAlive) return;
+            if (enemy == null || !enemy.IsAlive) 
+            {
+                Debug.Log($"[AIController] {name} 攻击失败 - enemy组件: {enemy == null}, 敌人已死: {enemy?.IsAlive == false}");
+                return;
+            }
             
             // 检查距离
             float distance = Vector2.Distance(transform.position, target.transform.position);
-            if (distance > attackRange) return;
+            if (distance > attackRange) 
+            {
+                Debug.Log($"[AIController] {name} 攻击失败 - 距离太远: {distance} > {attackRange}");
+                return;
+            }
+            
+            Debug.Log($"[AIController] {name} 正在攻击 {target.name}, 距离: {distance}");
             
             // 面向目标
             Vector2 direction = (target.transform.position - transform.position).normalized;
@@ -296,27 +340,19 @@ namespace AI.Core
             
             GameObject closest = null;
             float closestDistance = float.MaxValue;
+            InteractionPriority highestPriority = InteractionPriority.Low;
             
             foreach (var collider in colliders)
             {
                 float distance = Vector2.Distance(transform.position, collider.transform.position);
-                if (distance < closestDistance)
+                InteractionPriority priority = GetInteractionPriority(collider.gameObject);
+                
+                // 优先级更高或同优先级但更近
+                if (priority > highestPriority || (priority == highestPriority && distance < closestDistance))
                 {
-                    // 检查是否可交互
-                    var npc = collider.GetComponent<NPCBase>();
-                    if (npc != null && npc.CanInteract(gameObject))
-                    {
-                        closest = collider.gameObject;
-                        closestDistance = distance;
-                        continue;
-                    }
-                    
-                    // 检查其他可交互对象
-                    if (collider.GetComponent<IInteractable>() != null)
-                    {
-                        closest = collider.gameObject;
-                        closestDistance = distance;
-                    }
+                    closest = collider.gameObject;
+                    closestDistance = distance;
+                    highestPriority = priority;
                 }
             }
             
@@ -326,9 +362,113 @@ namespace AI.Core
             }
         }
         
+        private InteractionPriority GetInteractionPriority(GameObject obj)
+        {
+            // 1. 检查是否是拾取物
+            var pickup = obj.GetComponent<Loot.UnifiedPickup>();
+            if (pickup != null && pickup.PickupItem != null)
+            {
+                // 评估物品价值
+                if (itemEvaluator != null && itemEvaluator.ShouldPickupItem(pickup.PickupItem))
+                {
+                    var category = itemEvaluator.IdentifyItemCategory(pickup.PickupItem);
+                    
+                    // 关键物品优先级最高
+                    if (category == ItemCategory.Key || pickup.PickupItem.Rarity >= ItemRarity.Epic)
+                        return InteractionPriority.Critical;
+                    
+                    // 急需物品优先级高
+                    if (category == itemEvaluator.GetMostNeededItemCategory())
+                        return InteractionPriority.High;
+                    
+                    return InteractionPriority.Medium;
+                }
+                return InteractionPriority.Low;
+            }
+            
+            // 2. 检查是否是宝箱
+            var chest = obj.GetComponent<Interactables.TreasureChest>();
+            if (chest != null)
+            {
+                bool isLocked = chest.IsLocked;
+                float chestValue = itemEvaluator?.EvaluateTreasureChest(isLocked) ?? 100f;
+                
+                if (chestValue > 150f)
+                    return InteractionPriority.High;
+                else if (chestValue > 0f)
+                    return InteractionPriority.Medium;
+                else
+                    return InteractionPriority.None; // 锁着且没钥匙
+            }
+            
+            // 3. NPC根据需求判断
+            var npc = obj.GetComponent<NPCBase>();
+            if (npc != null && npc.CanInteract(gameObject))
+            {
+                switch (npc.NPCType)
+                {
+                    case NPCType.Doctor:
+                        if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f)
+                            return InteractionPriority.High;
+                        break;
+                    case NPCType.Restaurant:
+                        if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f ||
+                            aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.3f)
+                            return InteractionPriority.High;
+                        break;
+                    case NPCType.Merchant:
+                        if (itemEvaluator?.GetMostNeededItemCategory() != ItemCategory.Other)
+                            return InteractionPriority.Medium;
+                        break;
+                }
+                return InteractionPriority.Medium;
+            }
+            
+            // 4. 其他交互物（泉水、传送门等）
+            if (obj.GetComponent<IInteractable>() != null)
+            {
+                if (obj.name.Contains("Portal") || obj.name.Contains("Teleporter"))
+                    return InteractionPriority.Critical;
+                    
+                if (obj.name.Contains("Fountain") && aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.5f)
+                    return InteractionPriority.High;
+                    
+                return InteractionPriority.Medium;
+            }
+            
+            return InteractionPriority.None;
+        }
+        
         private void InteractWith(GameObject target)
         {
-            // NPC交互
+            // 1. 拾取物交互（优先处理）
+            var pickup = target.GetComponent<Loot.UnifiedPickup>();
+            if (pickup != null && pickup.PickupItem != null)
+            {
+                // 尝试拾取
+                if (pickup.CanPickup && pickup.RequiresInteraction)
+                {
+                    // 手动拾取的物品
+                    if (itemEvaluator != null && itemEvaluator.ShouldPickupItem(pickup.PickupItem))
+                    {
+                        pickup.Pickup(gameObject);
+                        collectedItemThisFrame = true;
+                        Debug.Log($"[AIController] {name} 拾取了 {pickup.PickupItem.ItemName}");
+                    }
+                }
+                return;
+            }
+            
+            // 2. 宝箱交互
+            var chest = target.GetComponent<Interactables.TreasureChest>();
+            if (chest != null)
+            {
+                chest.Interact(gameObject);
+                Debug.Log($"[AIController] {name} 开启了宝箱");
+                return;
+            }
+            
+            // 3. NPC交互
             var npc = target.GetComponent<NPCBase>();
             if (npc != null)
             {
@@ -340,7 +480,7 @@ namespace AI.Core
                 return;
             }
             
-            // 其他交互
+            // 4. 其他交互物
             var interactable = target.GetComponent<IInteractable>();
             if (interactable != null)
             {
@@ -412,26 +552,64 @@ namespace AI.Core
         
         private bool HandleMerchantInteraction(NPCBase merchant)
         {
-            // AI购买决策
+            // 使用经济系统进行智能决策
+            if (economicSystem == null) 
+            {
+                // 回退到简单逻辑
+                return HandleMerchantInteractionFallback(merchant);
+            }
+            
             var merchantNPC = merchant as NPC.Types.MerchantNPC;
             if (merchantNPC == null) return true;
             
-            // 检查是否需要购买补给品
+            // 1. 创建购物清单
+            var shoppingList = economicSystem.CreateShoppingList(merchant);
+            
+            // 2. 检查是否需要出售物品来筹钱
+            if (shoppingList.TotalCost > currencyManager.CurrentGold)
+            {
+                var itemsToSell = economicSystem.CreateSellingList(merchant, shoppingList.TotalCost - currencyManager.CurrentGold);
+                
+                // 执行出售
+                foreach (var item in itemsToSell)
+                {
+                    merchantNPC.HandleAIRequest($"sell_{item.ItemName}", gameObject);
+                    economicSystem.RecordTransaction(TransactionType.Sell, item, 1, item.BuyPrice * 0.5f, merchant);
+                }
+            }
+            
+            // 3. 执行购买
+            foreach (var shoppingItem in shoppingList.Items)
+            {
+                string requestType = DetermineRequestType(shoppingItem.Item);
+                for (int i = 0; i < shoppingItem.Quantity; i++)
+                {
+                    merchantNPC.HandleAIRequest(requestType, gameObject);
+                }
+                economicSystem.RecordTransaction(TransactionType.Buy, shoppingItem.Item, shoppingItem.Quantity, shoppingItem.PricePerUnit, merchant);
+            }
+            
+            return shoppingList.Items.Count > 0;
+        }
+        
+        private bool HandleMerchantInteractionFallback(NPCBase merchant)
+        {
+            // 原始的简单逻辑作为后备
+            var merchantNPC = merchant as NPC.Types.MerchantNPC;
+            if (merchantNPC == null) return true;
+            
             if (currencyManager != null && currencyManager.CurrentGold > 50)
             {
-                // 需要补充生命
                 if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f)
                 {
                     merchantNPC.HandleAIRequest("buy_health_potion", gameObject);
                     return true;
                 }
-                // 需要补充食物
                 if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f)
                 {
                     merchantNPC.HandleAIRequest("buy_food", gameObject);
                     return true;
                 }
-                // 需要补充水
                 if (aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.3f)
                 {
                     merchantNPC.HandleAIRequest("buy_water", gameObject);
@@ -441,13 +619,57 @@ namespace AI.Core
             return false;
         }
         
+        private string DetermineRequestType(ItemBase item)
+        {
+            var category = itemEvaluator?.IdentifyItemCategory(item) ?? ItemCategory.Other;
+            
+            switch (category)
+            {
+                case ItemCategory.Health:
+                    return "buy_health_potion";
+                case ItemCategory.Food:
+                    return "buy_food";
+                case ItemCategory.Water:
+                    return "buy_water";
+                case ItemCategory.Weapon:
+                    return "buy_weapon";
+                case ItemCategory.Key:
+                    return "buy_key";
+                default:
+                    return "buy_item";
+            }
+        }
+        
         private bool HandleDoctorInteraction(NPCBase doctor)
         {
-            // AI治疗决策
             var doctorNPC = doctor as NPC.Types.DoctorNPC;
             if (doctorNPC == null) return true;
             
-            if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f && currencyManager != null && currencyManager.CurrentGold > 50)
+            // 使用经济系统评估
+            if (economicSystem != null)
+            {
+                // 评估治疗服务
+                float healingPrice = 100f; // 假设基础治疗价格
+                if (economicSystem.ShouldUseService(ServiceType.Healing, healingPrice))
+                {
+                    doctorNPC.HandleAIRequest("heal", gameObject);
+                    economicSystem.RecordTransaction(TransactionType.Service, null, 1, healingPrice, doctor);
+                    return true;
+                }
+                
+                // 考虑购买药品
+                var shoppingList = economicSystem.CreateShoppingList(doctor);
+                foreach (var item in shoppingList.Items)
+                {
+                    doctorNPC.HandleAIRequest($"buy_{item.Item.ItemName}", gameObject);
+                    economicSystem.RecordTransaction(TransactionType.Buy, item.Item, item.Quantity, item.PricePerUnit, doctor);
+                }
+                
+                return shoppingList.Items.Count > 0;
+            }
+            
+            // 后备逻辑
+            if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f && currencyManager?.CurrentGold > 50)
             {
                 doctorNPC.HandleAIRequest("heal", gameObject);
                 return true;
@@ -457,57 +679,122 @@ namespace AI.Core
         
         private bool HandleRestaurantInteraction(NPCBase restaurant)
         {
-            // AI进食决策
             var restaurantNPC = restaurant as NPC.Types.RestaurantNPC;
             if (restaurantNPC == null) return true;
             
-            // 口渴严重，喝免费水
-            if (aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.3f)
+            bool actionTaken = false;
+            
+            // 使用经济系统评估
+            if (economicSystem != null)
             {
-                restaurantNPC.HandleAIRequest("water", gameObject);
-                return true;
+                // 免费水服务
+                if (economicSystem.ShouldUseService(ServiceType.Water, 0f))
+                {
+                    restaurantNPC.HandleAIRequest("water", gameObject);
+                    actionTaken = true;
+                }
+                
+                // 付费食物服务
+                float foodPrice = 20f; // 假设基础食物价格
+                if (economicSystem.ShouldUseService(ServiceType.Food, foodPrice))
+                {
+                    restaurantNPC.HandleAIRequest("food", gameObject);
+                    economicSystem.RecordTransaction(TransactionType.Service, null, 1, foodPrice, restaurant);
+                    actionTaken = true;
+                }
             }
-            // 饥饿且有钱
-            else if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f && currencyManager != null && currencyManager.CurrentGold > 10)
+            else
             {
-                restaurantNPC.HandleAIRequest("food", gameObject);
-                return true;
+                // 后备逻辑
+                if (aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.3f)
+                {
+                    restaurantNPC.HandleAIRequest("water", gameObject);
+                    actionTaken = true;
+                }
+                else if (aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f && currencyManager?.CurrentGold > 10)
+                {
+                    restaurantNPC.HandleAIRequest("food", gameObject);
+                    actionTaken = true;
+                }
             }
-            return false;
+            
+            return actionTaken;
         }
         
         private bool HandleBlacksmithInteraction(NPCBase blacksmith)
         {
-            // AI装备升级决策
             var blacksmithNPC = blacksmith as NPC.Types.BlacksmithNPC;
             if (blacksmithNPC == null) return true;
             
-            if (inventory != null && inventory.EquippedWeapon != null && currencyManager != null && currencyManager.CurrentGold > 200)
+            // 使用经济系统评估
+            if (economicSystem != null)
             {
-                blacksmithNPC.HandleAIRequest("upgrade_weapon", gameObject);
-                return true;
+                // 武器升级决策
+                float upgradePrice = 200f; // 假设基础升级价格
+                if (inventory?.EquippedWeapon != null && 
+                    economicSystem.ShouldUseService(ServiceType.WeaponUpgrade, upgradePrice))
+                {
+                    blacksmithNPC.HandleAIRequest("upgrade_weapon", gameObject);
+                    economicSystem.RecordTransaction(TransactionType.Service, null, 1, upgradePrice, blacksmith);
+                    return true;
+                }
+                
+                // 考虑购买新武器
+                var shoppingList = economicSystem.CreateShoppingList(blacksmith);
+                foreach (var item in shoppingList.Items)
+                {
+                    if (item.Item is WeaponItem)
+                    {
+                        blacksmithNPC.HandleAIRequest($"buy_{item.Item.ItemName}", gameObject);
+                        economicSystem.RecordTransaction(TransactionType.Buy, item.Item, 1, item.PricePerUnit, blacksmith);
+                        return true;
+                    }
+                }
+            }
+            else
+            {
+                // 后备逻辑
+                if (inventory?.EquippedWeapon != null && currencyManager?.CurrentGold > 200)
+                {
+                    blacksmithNPC.HandleAIRequest("upgrade_weapon", gameObject);
+                    return true;
+                }
             }
             return false;
         }
         
         private bool HandleTailorInteraction(NPCBase tailor)
         {
-            // AI背包扩容决策
             var tailorNPC = tailor as NPC.Types.TailorNPC;
             if (tailorNPC == null) return true;
             
-            if (inventory == null || currencyManager == null) return false;
+            if (inventory == null) return false;
             
-            int usedSlots = 0;
-            for (int i = 0; i < inventory.Size; i++)
+            // 使用经济系统评估
+            if (economicSystem != null)
             {
-                if (!inventory.GetSlot(i).IsEmpty) usedSlots++;
+                float expansionPrice = 500f; // 假设扩容价格
+                if (economicSystem.ShouldUseService(ServiceType.BagExpansion, expansionPrice))
+                {
+                    tailorNPC.HandleAIRequest("expand_bag", gameObject);
+                    economicSystem.RecordTransaction(TransactionType.Service, null, 1, expansionPrice, tailor);
+                    return true;
+                }
             }
-            
-            if (usedSlots > inventory.Size * 0.8f && currencyManager.CurrentGold > 500)
+            else
             {
-                tailorNPC.HandleAIRequest("expand_bag", gameObject);
-                return true;
+                // 后备逻辑：计算背包使用率
+                int usedSlots = 0;
+                for (int i = 0; i < inventory.Size; i++)
+                {
+                    if (!inventory.GetSlot(i).IsEmpty) usedSlots++;
+                }
+                
+                if (usedSlots > inventory.Size * 0.8f && currencyManager?.CurrentGold > 500)
+                {
+                    tailorNPC.HandleAIRequest("expand_bag", gameObject);
+                    return true;
+                }
             }
             return false;
         }
@@ -1377,6 +1664,9 @@ namespace AI.Core
             Gizmos.color = Color.blue;
             Gizmos.DrawWireSphere(transform.position, communicationRange);
         }
+        
+        // Public getters
+        public GameObject GetCurrentTarget() => currentTarget;
     }
     
     public enum AIActionPriority

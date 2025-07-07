@@ -48,6 +48,10 @@ namespace AI.Core
         private List<CommunicationRecord> sentMessages = new List<CommunicationRecord>();
         private List<CommunicationRecord> receivedMessages = new List<CommunicationRecord>();
         
+        // 时间追踪
+        public float LastMessageTime { get; private set; }
+        public float LastFaceToFaceTime { get; private set; }
+        
         // 事件
         public System.Action<CommunicationMessage> OnMessageReceived;
         public System.Action<AICommunicator, float> OnFaceToFaceTalk; // 发送者，心情改善值
@@ -99,6 +103,9 @@ namespace AI.Core
             
             // 播放通信音效
             PlayCommunicationSound(type);
+            
+            // 记录发送时间
+            LastMessageTime = Time.time;
             
             Debug.Log($"[AICommunicator] {name} 发送消息: {type} at {position}, 接收者数量: {receiversCount}");
         }
@@ -153,6 +160,10 @@ namespace AI.Core
                 
                 OnFaceToFaceTalk?.Invoke(facingAI, moodImprovement);
                 facingAI.OnFaceToFaceTalk?.Invoke(this, moodImprovement);
+                
+                // 记录面对面交流时间
+                LastFaceToFaceTime = Time.time;
+                facingAI.LastFaceToFaceTime = Time.time;
                 
                 // 播放交谈声音
                 MakeSound(SoundType.Talk);
