@@ -81,6 +81,8 @@ namespace AI.Core
         // 当前目标
         private GameObject currentTarget;
         private AIActionPriority currentPriority = AIActionPriority.Normal;
+        private GameObject chaseTarget; // 需要追击的目标
+        public GameObject ChaseTarget => chaseTarget;
         
         // DeepSeek决策
         private AIDecision currentDeepSeekDecision;
@@ -274,6 +276,15 @@ namespace AI.Core
             Move(direction);
         }
         
+        // 追击目标
+        public void ChaseToTarget(GameObject target)
+        {
+            if (target == null || aiStats.IsDead) return;
+            
+            Vector2 direction = (target.transform.position - transform.position).normalized;
+            Move(direction);
+        }
+        
         // 战斗控制
         public void Attack(GameObject target)
         {
@@ -295,7 +306,15 @@ namespace AI.Core
             if (distance > attackRange) 
             {
                 Debug.Log($"[AIController] {name} 攻击失败 - 距离太远: {distance} > {attackRange}");
+                // 设置追击目标，让AIBrain决定是否追击
+                chaseTarget = target;
                 return;
+            }
+            
+            // 清除追击目标（已经在攻击范围内）
+            if (chaseTarget == target)
+            {
+                chaseTarget = null;
             }
             
             Debug.Log($"[AIController] {name} 正在攻击 {target.name}, 距离: {distance}");

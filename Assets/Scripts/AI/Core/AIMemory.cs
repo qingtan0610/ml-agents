@@ -212,6 +212,61 @@ namespace AI.Core
             }
         }
         
+        // 记录危险区域（公开方法）
+        public void RecordDangerZone(Vector2 position, float radius)
+        {
+            AddDangerZone(position, radius, Time.time + 180f); // 3分钟过期
+        }
+        
+        // 记录传送门位置（公开方法）
+        public void RecordPortalLocation(Vector2 position)
+        {
+            importantLocations["Portal"] = new LocationMemory
+            {
+                LocationName = "Portal",
+                Position = position,
+                RoomType = RoomType.Portal,
+                LastVisitTime = Time.time,
+                Importance = 10
+            };
+            
+            AddEvent(new EventMemory
+            {
+                EventType = EventType.Discovery,
+                Description = "发现传送门！",
+                Position = position,
+                Time = Time.time,
+                Importance = 10
+            });
+        }
+        
+        // 记录资源位置（公开方法）
+        public void RecordResourceLocation(string resourceName, Vector2 position)
+        {
+            // 尝试解析资源类型
+            ResourceType resourceType = ResourceType.Unknown;
+            if (resourceName.ToLower().Contains("water"))
+                resourceType = ResourceType.Water;
+            else if (resourceName.ToLower().Contains("food"))
+                resourceType = ResourceType.Food;
+                
+            AddResourceLocation(resourceType, position);
+        }
+        
+        // 记录NPC位置（公开方法）
+        public void RecordNPCLocation(string npcType, Vector2 position)
+        {
+            string key = $"NPC_{npcType}";
+            importantLocations[key] = new LocationMemory
+            {
+                LocationName = key,
+                Position = position,
+                RoomType = RoomType.Merchant, // 使用Merchant作为通用NPC类型
+                LastVisitTime = Time.time,
+                Importance = 5
+            };
+        }
+        
         // 添加危险区域
         private void AddDangerZone(Vector2 position, float radius, float expiryTime)
         {
@@ -335,6 +390,29 @@ namespace AI.Core
                 return location.Position;
             }
             return null;
+        }
+        
+        // 检查是否正在朝重要位置移动
+        public bool IsMovingTowardImportantLocation(Vector2 currentPosition, Vector2 velocity)
+        {
+            if (importantLocations.Count == 0) return false;
+            
+            if (velocity.magnitude < 0.1f) return false;
+            
+            // 检查是否朝任何重要位置移动
+            foreach (var location in importantLocations.Values)
+            {
+                Vector2 toLocation = location.Position - currentPosition;
+                float dot = Vector2.Dot(velocity.normalized, toLocation.normalized);
+                
+                // 如果朝着位置移动（夹角小于45度）
+                if (dot > 0.7f)
+                {
+                    return true;
+                }
+            }
+            
+            return false;
         }
         
         // 清空记忆（新地图时使用）

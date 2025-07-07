@@ -51,10 +51,15 @@ namespace AI.Core
         private DeepSeekDecisionMaker deepSeekDecisionMaker;
         private AIRewardCalculator rewardCalculator;
         private AIGoalSystem goalSystem;
+        private AIBehaviorAnalyzer behaviorAnalyzer;
+        private AIContextualMemory contextualMemory;
         
         // ML-Agents观察空间
         private const int GRID_SIZE = 16; // 房间网格大小
         private const int VISION_RANGE = 1; // 视野范围（房间数）
+        
+        // 动作记录
+        private int[] lastActions = new int[5];
         
         protected override void Awake()
         {
@@ -76,6 +81,38 @@ namespace AI.Core
                 Debug.Log($"[AIBrain] 为 {name} 添加了AIRewardCalculator");
             }
             
+            // 获取或添加行为分析器
+            behaviorAnalyzer = GetComponent<AIBehaviorAnalyzer>();
+            if (behaviorAnalyzer == null)
+            {
+                behaviorAnalyzer = gameObject.AddComponent<AIBehaviorAnalyzer>();
+                Debug.Log($"[AIBrain] 为 {name} 添加了AIBehaviorAnalyzer");
+            }
+            
+            // 获取或添加情境记忆
+            contextualMemory = GetComponent<AIContextualMemory>();
+            if (contextualMemory == null)
+            {
+                contextualMemory = gameObject.AddComponent<AIContextualMemory>();
+                Debug.Log($"[AIBrain] 为 {name} 添加了AIContextualMemory");
+            }
+            
+            // 获取或添加交易管理器
+            var tradeManager = GetComponent<AITradeManager>();
+            if (tradeManager == null)
+            {
+                tradeManager = gameObject.AddComponent<AITradeManager>();
+                Debug.Log($"[AIBrain] 为 {name} 添加了AITradeManager");
+            }
+            
+            // 获取或添加背包管理器
+            var inventoryManager = GetComponent<AIInventoryManager>();
+            if (inventoryManager == null)
+            {
+                inventoryManager = gameObject.AddComponent<AIInventoryManager>();
+                Debug.Log($"[AIBrain] 为 {name} 添加了AIInventoryManager");
+            }
+            
             // 获取或添加目标系统
             goalSystem = GetComponent<AIGoalSystem>();
             if (goalSystem == null)
@@ -89,6 +126,70 @@ namespace AI.Core
             if (useDeepSeekAPI)
             {
                 deepSeekDecisionMaker = new DeepSeekDecisionMaker();
+            }
+        }
+        
+        private void Start()
+        {
+            // 连接通信系统到记忆系统
+            var communicator = GetComponent<AICommunicator>();
+            if (communicator != null && memory != null)
+            {
+                communicator.OnMessageReceived += OnCommunicationReceived;
+                Debug.Log($"[AIBrain] {name} 连接通信系统到记忆系统");
+            }
+        }
+        
+        private void OnDestroy()
+        {
+            // 清理事件订阅
+            var communicator = GetComponent<AICommunicator>();
+            if (communicator != null)
+            {
+                communicator.OnMessageReceived -= OnCommunicationReceived;
+            }
+        }
+        
+        /// <summary>
+        /// 处理收到的通信消息
+        /// </summary>
+        private void OnCommunicationReceived(CommunicationMessage message)
+        {
+            if (message == null || message.Sender == null) return;
+            
+            // 记录到记忆系统
+            memory.RecordAICommunication(message.Sender.name, message.Position, message.Type);
+            
+            Debug.Log($"[AIBrain] {name} 收到来自 {message.Sender.name} 的消息: {message.Type} at {message.Position}");
+            
+            // 特殊处理不同类型的消息
+            switch (message.Type)
+            {
+                case CommunicationType.Help:
+                    // 队友求救，记录危险位置
+                    memory.RecordDangerZone(message.Position, 20f);
+                    break;
+                    
+                case CommunicationType.ComeHere:
+                    // 请求过来（可能是交易请求）
+                    // 交易管理器会独立处理
+                    break;
+                    
+                case CommunicationType.FoundPortal:
+                    // 发现传送门，立即记录
+                    memory.RecordPortalLocation(message.Position);
+                    Debug.Log($"[AIBrain] {name} 得知传送门位置: {message.Position}");
+                    break;
+                    
+                case CommunicationType.FoundWater:
+                    // 发现水源
+                    memory.RecordResourceLocation("Water", message.Position);
+                    break;
+                    
+                case CommunicationType.FoundNPC:
+                    // 发现NPC
+                    memory.RecordNPCLocation("Unknown", message.Position);
+                    break;
             }
         }
         
@@ -111,8 +212,8 @@ namespace AI.Core
             // 防止组件为空导致卡死
             if (aiStats == null || aiStats.Config == null || inventory == null || perception == null)
             {
-                // 添加默认观察值: 11(状态) + 7(背包) + 27(房间9*3) + 15(敌人5*3) + 8(记忆) + 12(其他AI) + 17(目标) = 97
-                for (int i = 0; i < 97; i++)
+                // 添加默认观察值: 5(状态) + 7(背包) + 27(房间) + 15(敌人) + 12(NPC) + 20(物品) + 8(墙壁) + 8(记忆) + 12(其他AI) = 114
+                for (int i = 0; i < 114; i++)
                 {
                     sensor.AddObservation(0f);
                 }
@@ -176,13 +277,23 @@ namespace AI.Core
             // 编码敌人信息 (最多5个)
             for (int i = 0; i < 5; i++)
             {
-                if (i < nearbyEnemies.Count)
+                if (i < nearbyEnemies.Count && nearbyEnemies[i] != null)
                 {
                     var enemy = nearbyEnemies[i];
-                    Vector2 relativePos = (Vector2)enemy.transform.position - (Vector2)transform.position;
-                    sensor.AddObservation(relativePos.x / 10f);
-                    sensor.AddObservation(relativePos.y / 10f);
-                    sensor.AddObservation(enemy.CurrentHealth / enemy.MaxHealth);
+                    if (enemy != null && enemy.gameObject != null)
+                    {
+                        Vector2 relativePos = (Vector2)enemy.transform.position - (Vector2)transform.position;
+                        sensor.AddObservation(relativePos.x / 10f);
+                        sensor.AddObservation(relativePos.y / 10f);
+                        sensor.AddObservation(enemy.CurrentHealth / enemy.MaxHealth);
+                    }
+                    else
+                    {
+                        // 敌人已被销毁，添加默认值
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                    }
                 }
                 else
                 {
@@ -192,7 +303,116 @@ namespace AI.Core
                 }
             }
             
-                // 4. 记忆信息 (8个值) - 扩展重要位置记忆
+            // 编码NPC信息 (最多3个)
+            for (int i = 0; i < 3; i++)
+            {
+                if (i < nearbyNPCs.Count && nearbyNPCs[i] != null)
+                {
+                    var npc = nearbyNPCs[i];
+                    if (npc != null && npc.gameObject != null)
+                    {
+                        Vector2 relativePos = (Vector2)npc.transform.position - (Vector2)transform.position;
+                        sensor.AddObservation(relativePos.x / 10f);
+                        sensor.AddObservation(relativePos.y / 10f);
+                        sensor.AddObservation((float)npc.NPCType / 10f); // NPC类型
+                        sensor.AddObservation(npc.CanInteract(gameObject) ? 1f : 0f); // 是否可交互
+                    }
+                    else
+                    {
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                    }
+                }
+                else
+                {
+                    sensor.AddObservation(0f);
+                    sensor.AddObservation(0f);
+                    sensor.AddObservation(0f);
+                    sensor.AddObservation(0f);
+                }
+            }
+            
+            // 编码物品/交互物信息 (最多5个)
+            for (int i = 0; i < 5; i++)
+            {
+                if (i < nearbyItems.Count && nearbyItems[i] != null)
+                {
+                    var item = nearbyItems[i];
+                    if (item != null)
+                    {
+                        Vector2 relativePos = (Vector2)item.transform.position - (Vector2)transform.position;
+                        sensor.AddObservation(relativePos.x / 10f);
+                        sensor.AddObservation(relativePos.y / 10f);
+                        
+                        // 物品类型识别
+                        float itemType = 0f;
+                        float itemState = 0f;
+                        
+                        var chest = item.GetComponent<Interactables.TreasureChest>();
+                        var fountain = item.GetComponent<Interactables.Fountain>();
+                        var pickup = item.GetComponent<Loot.UnifiedPickup>();
+                        
+                        if (chest != null)
+                        {
+                            itemType = 1f; // 宝箱
+                            itemState = chest.IsOpened ? 0f : (chest.IsLocked ? 0.5f : 1f); // 已开/锁着/可开
+                        }
+                        else if (fountain != null)
+                        {
+                            itemType = 2f; // 泉水
+                            itemState = 1f; // 泉水总是可用（内部有冷却逻辑）
+                        }
+                        else if (pickup != null)
+                        {
+                            itemType = 3f; // 掉落物
+                            itemState = 1f; // 总是可拾取
+                        }
+                        else if (item.name.Contains("Portal") || item.name.Contains("Teleport"))
+                        {
+                            itemType = 4f; // 传送门
+                            itemState = 1f;
+                        }
+                        
+                        sensor.AddObservation(itemType / 10f);
+                        sensor.AddObservation(itemState);
+                    }
+                    else
+                    {
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                        sensor.AddObservation(0f);
+                    }
+                }
+                else
+                {
+                    sensor.AddObservation(0f);
+                    sensor.AddObservation(0f);
+                    sensor.AddObservation(0f);
+                    sensor.AddObservation(0f);
+                }
+            }
+            
+            // 墙壁检测信息 (8方向) - 让AI感知周围的墙壁
+            float[] wallDistances = new float[8];
+            Vector2[] directions = new Vector2[]
+            {
+                Vector2.up, Vector2.down, Vector2.left, Vector2.right,
+                new Vector2(1, 1).normalized, new Vector2(-1, 1).normalized,
+                new Vector2(1, -1).normalized, new Vector2(-1, -1).normalized
+            };
+            
+            int wallLayer = 1 << 9; // Layer 9 是 Wall
+            for (int i = 0; i < 8; i++)
+            {
+                RaycastHit2D hit = Physics2D.Raycast(transform.position, directions[i], 5f, wallLayer);
+                float distance = hit.collider != null ? hit.distance : 5f;
+                sensor.AddObservation(distance / 5f); // 归一化到0-1
+            }
+            
+                // 记忆信息 (8个值) - 扩展重要位置记忆
                 var importantLocations = memory.GetImportantLocations();
                 sensor.AddObservation(importantLocations.ContainsKey("Portal") ? 1f : 0f);
                 sensor.AddObservation(importantLocations.ContainsKey("Fountain") ? 1f : 0f);
@@ -253,7 +473,7 @@ namespace AI.Core
             {
                 Debug.LogError($"[AIBrain] CollectObservations异常: {e.Message}");
                 // 在异常情况下添加默认观察值
-                for (int i = 0; i < 97; i++)
+                for (int i = 0; i < 114; i++)
                 {
                     sensor.AddObservation(0f);
                 }
@@ -284,6 +504,98 @@ namespace AI.Core
                 int itemAction = actions.DiscreteActions[2]; // 0-10: 不使用、使用物品槽1-10
                 int communicateAction = actions.DiscreteActions[3]; // 0-6: 不通信、发送各种消息
                 int combatAction = actions.DiscreteActions[4]; // 0-2: 不攻击、攻击、切换武器
+                
+                // 保存原始动作用于记录
+                lastActions[0] = moveAction;
+                lastActions[1] = interactAction;
+                lastActions[2] = itemAction;
+                lastActions[3] = communicateAction;
+                lastActions[4] = combatAction;
+                
+                // 获取情境建议
+                if (contextualMemory != null)
+                {
+                    var contextSuggestion = contextualMemory.GetContextSuggestion();
+                    
+                    // 如果有推荐动作且置信度高
+                    if (contextSuggestion.recommendedActions != null && contextSuggestion.confidence > 0.7f)
+                    {
+                        // 有一定概率采用推荐动作
+                        if (UnityEngine.Random.value < contextSuggestion.confidence * 0.3f)
+                        {
+                            moveAction = contextSuggestion.recommendedActions[0];
+                            interactAction = contextSuggestion.recommendedActions[1];
+                            itemAction = contextSuggestion.recommendedActions[2];
+                            communicateAction = contextSuggestion.recommendedActions[3];
+                            combatAction = contextSuggestion.recommendedActions[4];
+                            Debug.Log($"[AIBrain] {name} 采用情境记忆推荐动作，置信度: {contextSuggestion.confidence}");
+                        }
+                    }
+                    
+                    // 如果有应该避免的动作
+                    if (contextSuggestion.avoidActions != null && contextSuggestion.avoidanceStrength > 0.5f)
+                    {
+                        // 检查当前动作是否在避免列表中
+                        bool shouldAvoid = moveAction == contextSuggestion.avoidActions[0] ||
+                                         interactAction == contextSuggestion.avoidActions[1] ||
+                                         itemAction == contextSuggestion.avoidActions[2];
+                        
+                        if (shouldAvoid && UnityEngine.Random.value < contextSuggestion.avoidanceStrength)
+                        {
+                            // 随机改变动作
+                            moveAction = UnityEngine.Random.Range(0, 5);
+                            Debug.Log($"[AIBrain] {name} 避免危险动作，强度: {contextSuggestion.avoidanceStrength}");
+                        }
+                    }
+                    
+                    // 如果建议尝试新策略
+                    if (contextSuggestion.shouldTryNewStrategy)
+                    {
+                        AddReward(contextSuggestion.explorationBonus);
+                    }
+                }
+                
+                // 记录动作用于行为分析
+                if (behaviorAnalyzer != null)
+                {
+                    behaviorAnalyzer.RecordAction(actions.DiscreteActions.Array);
+                    
+                    // 获取行为建议
+                    var suggestion = behaviorAnalyzer.GetActionSuggestion();
+                    
+                    // 如果AI卡住了，强制添加随机性 - 移除概率判断，确保立即执行
+                    if (suggestion.shouldRandomMove)
+                    {
+                        moveAction = UnityEngine.Random.Range(1, 5); // 强制随机移动
+                        interactAction = 0; // 清除其他动作，专注于移动
+                        Debug.Log($"[AIBrain] {name} 检测到卡住，强制随机移动到方向 {moveAction}");
+                    }
+                    
+                    // 如果在重复模式，强制添加动作噪声 - 移除概率判断
+                    if (suggestion.shouldAddNoise)
+                    {
+                        // 50%概率改变移动，50%概率改变其他动作
+                        if (UnityEngine.Random.value < 0.5f)
+                        {
+                            // 强制改变移动方向
+                            moveAction = UnityEngine.Random.Range(1, 5);
+                            Debug.Log($"[AIBrain] {name} 强制改变移动方向打破重复模式");
+                        }
+                        else
+                        {
+                            // 随机改变一个其他动作
+                            int randomActionIndex = UnityEngine.Random.Range(1, 5); // 跳过移动
+                            switch (randomActionIndex)
+                            {
+                                case 1: interactAction = UnityEngine.Random.Range(0, 3); break;
+                                case 2: itemAction = UnityEngine.Random.Range(0, 11); break;
+                                case 3: communicateAction = UnityEngine.Random.Range(0, 7); break;
+                                case 4: combatAction = UnityEngine.Random.Range(0, 3); break;
+                            }
+                            Debug.Log($"[AIBrain] {name} 添加行为噪声打破重复模式");
+                        }
+                    }
+                }
             
             // 执行移动
             Vector2 moveDirection = Vector2.zero;
@@ -327,20 +639,43 @@ namespace AI.Core
                 if (nearbyEnemies.Count > 0)
                 {
                     var target = nearbyEnemies[0]; // 选择最近的敌人
-                    Debug.Log($"[AIBrain] {name} 目标敌人: {target.name} 距离: {Vector2.Distance(transform.position, target.transform.position)}");
-                    
-                    if (combatAction == 1)
+                    if (target != null && target.gameObject != null)
                     {
-                        // 攻击
-                        Debug.Log($"[AIBrain] {name} 执行攻击");
-                        controller.Attack(target.gameObject);
-                    }
-                    else if (combatAction == 2)
-                    {
-                        // 切换到最佳武器
-                        controller.SelectBestWeapon(target.gameObject);
+                        Debug.Log($"[AIBrain] {name} 目标敌人: {target.name} 距离: {Vector2.Distance(transform.position, target.transform.position)}");
+                        
+                        if (combatAction == 1)
+                        {
+                            // 攻击
+                            Debug.Log($"[AIBrain] {name} 执行攻击");
+                            controller.Attack(target.gameObject);
+                        
+                            // 如果目标超出攻击范围，让模型决定是否追击
+                            if (controller.ChaseTarget != null)
+                            {
+                                // 模型需要通过移动行动来追击
+                                Debug.Log($"[AIBrain] {name} 目标超出范围，需要追击决策");
+                            }
+                        }
+                        else if (combatAction == 2)
+                        {
+                            // 切换到最佳武器
+                            controller.SelectBestWeapon(target.gameObject);
+                        }
                     }
                 }
+            }
+            
+            // 处理追击逻辑
+            if (controller.ChaseTarget != null && moveAction != 0)
+            {
+                // AI选择移动，追击目标
+                controller.ChaseToTarget(controller.ChaseTarget);
+                AddReward(0.01f); // 追击奖励
+            }
+            else if (controller.ChaseTarget != null && moveAction == 0)
+            {
+                // AI选择不移动，但有追击目标
+                AddReward(-0.01f); // 轻微惩罚
             }
             
                 // 计算奖励
@@ -355,333 +690,210 @@ namespace AI.Core
         
         private void CalculateRewards()
         {
-            // 使用新的奖励计算器
+            float totalReward = 0f;
+            
+            // 1. 使用增强的奖励计算器
             if (rewardCalculator != null)
             {
-                float totalReward = rewardCalculator.CalculateTotalReward();
-                AddReward(totalReward);
+                totalReward += rewardCalculator.CalculateTotalReward();
+            }
+            else
+            {
+                // 基础生存奖励
+                totalReward += 0.001f;
+            }
+            
+            // 2. 行为分析惩罚/奖励
+            if (behaviorAnalyzer != null)
+            {
+                float behaviorPenalty = behaviorAnalyzer.CalculateBehaviorPenalty();
+                totalReward += behaviorPenalty;
                 
-                // 死亡时结束episode
-                if (aiStats.IsDead)
+                // 如果AI被严重卡住，考虑重置
+                if (behaviorAnalyzer.IsStuck && UnityEngine.Random.value < 0.1f)
                 {
-                    EndEpisode();
+                    behaviorAnalyzer.ForceBreakLoop();
+                    Debug.Log($"[AIBrain] {name} 尝试强制打破死循环");
                 }
-                
-                return;
             }
             
-            // 备用：如果奖励计算器不存在，使用原始逻辑
-            float reward = 0f;
+            // 3. 探索奖励（基于熵）
+            float explorationBonus = CalculateExplorationBonus();
+            totalReward += explorationBonus;
             
-            // 生存奖励
-            float healthRatio = aiStats.CurrentHealth / aiStats.Config.maxHealth;
-            float hungerRatio = aiStats.CurrentHunger / aiStats.Config.maxHunger;
-            float thirstRatio = aiStats.CurrentThirst / aiStats.Config.maxThirst;
+            // 应用总奖励
+            AddReward(totalReward);
             
-            reward += (healthRatio + hungerRatio + thirstRatio) * 0.1f;
-            
-            // 探索奖励
-            if (perception.DiscoveredNewRoom())
+            // 记录到情境记忆
+            if (contextualMemory != null)
             {
-                reward += 0.5f;
+                // 获取最近的动作（从OnActionReceived保存）
+                contextualMemory.RecordActionResult(lastActions, totalReward, aiStats.IsDead);
             }
             
-            // 战斗奖励
-            if (controller.KilledEnemyThisFrame())
-            {
-                reward += 1f;
-            }
-            
-            // 物品收集奖励
-            if (controller.CollectedItemThisFrame())
-            {
-                reward += 0.3f;
-            }
-            
-            // 到达传送门奖励
-            if (controller.ReachedPortal())
-            {
-                reward += 5f;
-            }
-            
-            // 死亡惩罚
+            // 死亡时结束episode
             if (aiStats.IsDead)
             {
-                reward -= 5f;
                 EndEpisode();
             }
+        }
+        
+        // 计算探索奖励（鼓励尝试新行为）
+        private float CalculateExplorationBonus()
+        {
+            // 基于动作的多样性给予小幅奖励
+            // 这鼓励AI不要总是选择相同的动作
+            float entropy = 0f;
             
-            // 心情奖励
-            float moodBonus = (aiStats.GetMood(MoodDimension.Emotion) + 
-                              aiStats.GetMood(MoodDimension.Social) + 
-                              aiStats.GetMood(MoodDimension.Mentality)) / 300f; // 归一化到-1到1
-            reward += moodBonus * 0.05f;
+            // 简单的熵计算（可以更复杂）
+            if (UnityEngine.Random.value < 0.1f) // 10%概率给予探索奖励
+            {
+                entropy = 0.01f;
+            }
             
-            AddReward(reward);
+            return entropy;
         }
         
         public override void Heuristic(in ActionBuffers actionsOut)
         {
-            // 基于目标系统的启发式控制
+            // 增强的启发式策略，确保在无DeepSeek API时也有智能交流
             var discreteActions = actionsOut.DiscreteActions;
             
-            // 初始化所有动作为0
-            for (int i = 0; i < discreteActions.Length; i++)
+            // 死亡时不行动
+            if (aiStats.IsDead)
             {
-                discreteActions[i] = 0;
-            }
-            
-            // 如果目标系统不可用，使用原始逻辑
-            if (goalSystem == null || goalSystem.CurrentLowLevelGoal == null)
-            {
-                HeuristicFallback(actionsOut);
+                for (int i = 0; i < discreteActions.Length; i++)
+                    discreteActions[i] = 0;
                 return;
             }
             
-            // 获取当前环境信息
-            var nearbyEnemies = perception.GetNearbyEnemies();
-            var nearbyItems = perception.GetNearbyItems();
-            var nearbyNPCs = perception.GetNearbyNPCs();
-            
-            // 基于当前低层目标执行动作
-            switch (goalSystem.CurrentLowLevelGoal.Type)
+            // 使用智能交流决策
+            if (ShouldCommunicateHeuristic())
             {
-                case GoalType.Attack:
-                    ExecuteAttackGoal(discreteActions, nearbyEnemies);
-                    break;
-                    
-                case GoalType.MoveToTarget:
-                    ExecuteMoveToTargetGoal(discreteActions);
-                    break;
-                    
-                case GoalType.PickupItem:
-                    ExecutePickupGoal(discreteActions, nearbyItems);
-                    break;
-                    
-                case GoalType.UseItem:
-                    ExecuteUseItemGoal(discreteActions);
-                    break;
-                    
-                case GoalType.Interact:
-                    ExecuteInteractGoal(discreteActions, nearbyNPCs);
-                    break;
-                    
-                default:
-                    // 探索行为
-                    ExecuteExploreGoal(discreteActions);
-                    break;
+                var commType = DetermineHeuristicCommunication();
+                discreteActions[3] = (int)commType + 1; // 通信动作
+                Debug.Log($"[AIBrain] Heuristic 交流决策: {commType}");
+                return; // 专注于交流
             }
-        }
-        
-        private void ExecuteAttackGoal(ActionSegment<int> actions, List<Enemy.Enemy2D> enemies)
-        {
-            if (enemies == null || enemies.Count == 0) return;
             
-            var target = enemies[0];
-            Vector2 toTarget = (target.transform.position - transform.position).normalized;
-            float distance = Vector2.Distance(transform.position, target.transform.position);
+            // 生存优先逻辑
+            bool needWater = aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.4f;
+            bool needFood = aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.3f;
+            bool needHealing = aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.5f;
+            bool criticalHealth = aiStats.CurrentHealth <= aiStats.Config.maxHealth * 0.2f;
             
-            // 移动向目标
-            MoveTowards(actions, toTarget);
-            
-            // 如果在攻击范围内
-            if (distance <= 2.5f)
+            // 紧急使用物品
+            if (criticalHealth || needWater || needFood)
             {
-                actions[4] = 1; // 攻击
-                
-                // 基于AI的攻击性特征，可能切换武器
-                if (goalSystem.aggression > 0.7f && UnityEngine.Random.value < 0.15f)
+                discreteActions[2] = 1; // 使用物品
+                if (!criticalHealth) // 非危急状态可以移动寻找资源
                 {
-                    actions[4] = 2; // 切换武器
+                    discreteActions[0] = UnityEngine.Random.Range(1, 5); // 随机移动寻找资源
                 }
+                return;
             }
+            
+            // 战斗逻辑
+            var enemies = perception.GetNearbyEnemies();
+            if (enemies.Count > 0 && !criticalHealth)
+            {
+                discreteActions[4] = 1; // 攻击
+                // 简单移动逻辑：朝敌人移动
+                if (enemies.Count > 0)
+                {
+                    Vector2 toEnemy = (enemies[0].transform.position - transform.position).normalized;
+                    discreteActions[0] = GetMoveActionFromDirection(toEnemy);
+                }
+                return;
+            }
+            
+            // 交互优先
+            var npcs = perception.GetNearbyNPCs();
+            var items = perception.GetNearbyItems();
+            if (npcs.Count > 0 || items.Count > 0)
+            {
+                discreteActions[1] = 1; // 尝试交互
+                return;
+            }
+            
+            // 默认探索
+            discreteActions[0] = UnityEngine.Random.Range(1, 5); // 移动
         }
         
-        private void ExecuteMoveToTargetGoal(ActionSegment<int> actions)
+        /// <summary>
+        /// 启发式：判断是否应该交流
+        /// </summary>
+        private bool ShouldCommunicateHeuristic()
         {
-            // 基于中层目标确定目标位置
-            Vector2? targetPos = null;
-            
-            switch (goalSystem.CurrentMidLevelGoal?.Type)
-            {
-                case GoalType.Combat:
-                    var enemies = perception.GetNearbyEnemies();
-                    if (enemies.Count > 0)
-                    {
-                        targetPos = enemies[0].transform.position;
-                    }
-                    break;
-                    
-                case GoalType.Trade:
-                    var npcs = perception.GetNearbyNPCs();
-                    if (npcs.Count > 0)
-                    {
-                        targetPos = npcs[0].transform.position;
-                    }
-                    else if (memory.KnowsPortalLocation())
-                    {
-                        targetPos = memory.GetPathToImportantLocation("Merchant");
-                    }
-                    break;
-                    
-                case GoalType.Exploration:
-                    if (memory.KnowsPortalLocation() && goalSystem.CurrentHighLevelGoal?.Type == GoalType.Progression)
-                    {
-                        targetPos = memory.GetPathToImportantLocation("Portal");
-                    }
-                    else
-                    {
-                        // 探索未知区域
-                        targetPos = currentTarget != Vector2.zero ? currentTarget : GetRandomExplorationTarget();
-                    }
-                    break;
-            }
-            
-            if (targetPos.HasValue)
-            {
-                Vector2 direction = (targetPos.Value - (Vector2)transform.position).normalized;
-                MoveTowards(actions, direction);
-                currentTarget = targetPos.Value;
-            }
-        }
-        
-        private void ExecutePickupGoal(ActionSegment<int> actions, List<GameObject> items)
-        {
-            if (items == null || items.Count == 0) return;
-            
-            var target = items[0];
-            Vector2 toTarget = (target.transform.position - transform.position).normalized;
-            float distance = Vector2.Distance(transform.position, target.transform.position);
-            
-            // 移动向物品
-            MoveTowards(actions, toTarget);
-            
-            // 如果足够近，交互
-            if (distance <= 2.5f)
-            {
-                actions[1] = 1; // 物品交互
-            }
-        }
-        
-        private void ExecuteUseItemGoal(ActionSegment<int> actions)
-        {
-            // 基于需求使用物品
+            float socialMood = aiStats.GetMood(MoodDimension.Social);
             float healthRatio = aiStats.CurrentHealth / aiStats.Config.maxHealth;
-            float hungerRatio = aiStats.CurrentHunger / aiStats.Config.maxHunger;
-            float thirstRatio = aiStats.CurrentThirst / aiStats.Config.maxThirst;
+            int currentGold = currencyManager?.CurrentGold ?? 0;
             
-            // 简单策略：使用第一个可用物品槽
-            for (int i = 0; i < inventory.Size && i < 10; i++)
-            {
-                if (!inventory.GetSlot(i).IsEmpty)
-                {
-                    var item = inventory.GetSlot(i).Item;
-                    // 检查物品类型是否符合当前需求
-                    if ((healthRatio < 0.5f && item.ItemName.Contains("Health")) ||
-                        (hungerRatio < 0.5f && item.ItemName.Contains("Food")) ||
-                        (thirstRatio < 0.5f && item.ItemName.Contains("Water")))
-                    {
-                        actions[2] = i + 1; // 使用物品槽
-                        break;
-                    }
-                }
-            }
+            // 1. 紧急求助
+            if (healthRatio < 0.3f && currentGold < 20 && socialMood < 0)
+                return true;
+            
+            // 2. 严重孤独
+            if (socialMood < -40f)
+                return true;
+            
+            // 3. 发现重要信息需要分享
+            var npcs = perception.GetNearbyNPCs();
+            var enemies = perception.GetNearbyEnemies();
+            if (npcs.Count > 0 || enemies.Count > 2)
+                return true;
+            
+            // 4. 定期社交维护
+            if (socialMood < 10f && UnityEngine.Random.value < 0.1f)
+                return true;
+            
+            return false;
         }
         
-        private void ExecuteInteractGoal(ActionSegment<int> actions, List<NPC.Core.NPCBase> npcs)
+        /// <summary>
+        /// 启发式：确定交流类型
+        /// </summary>
+        private CommunicationType DetermineHeuristicCommunication()
         {
-            // 检查是否需要面对面交流
-            if (goalSystem.CurrentMidLevelGoal?.Type == GoalType.Communication)
-            {
-                // 寻找其他AI进行面对面交流
-                var otherAIs = FindObjectsOfType<AICommunicator>()
-                    .Where(c => c.gameObject != gameObject)
-                    .OrderBy(c => Vector2.Distance(transform.position, c.transform.position))
-                    .ToList();
-                
-                if (otherAIs.Count > 0 && Vector2.Distance(transform.position, otherAIs[0].transform.position) < 3f)
-                {
-                    actions[1] = 2; // 面对面交流
-                    
-                    // 面向对方
-                    Vector2 toOther = (otherAIs[0].transform.position - transform.position).normalized;
-                    MoveTowards(actions, toOther, false); // 不移动，只转向
-                }
-                else if (goalSystem.sociability > 0.5f && UnityEngine.Random.value < 0.05f)
-                {
-                    // 发送通信
-                    actions[3] = UnityEngine.Random.Range(1, 7); // 随机消息类型
-                }
-            }
-            else if (npcs != null && npcs.Count > 0)
-            {
-                // 与NPC交互
-                var target = npcs[0];
-                Vector2 toTarget = (target.transform.position - transform.position).normalized;
-                float distance = Vector2.Distance(transform.position, target.transform.position);
-                
-                // 移动向NPC
-                MoveTowards(actions, toTarget);
-                
-                // 如果足够近，交互
-                if (distance <= 2.5f)
-                {
-                    actions[1] = 1; // 物品交互
-                }
-            }
+            float healthRatio = aiStats.CurrentHealth / aiStats.Config.maxHealth;
+            int currentGold = currencyManager?.CurrentGold ?? 0;
+            float socialMood = aiStats.GetMood(MoodDimension.Social);
+            
+            // 1. 紧急求助
+            if (healthRatio < 0.3f || currentGold < 20)
+                return CommunicationType.Help;
+            
+            // 2. 分享NPC发现
+            var npcs = perception.GetNearbyNPCs();
+            if (npcs.Count > 0)
+                return CommunicationType.FoundNPC;
+            
+            // 3. 邀请协作（多敌人）
+            var enemies = perception.GetNearbyEnemies();
+            if (enemies.Count > 1 && healthRatio > 0.6f)
+                return CommunicationType.ComeHere;
+            
+            // 4. 位置报告（默认）
+            return CommunicationType.GoingTo;
         }
         
-        private void ExecuteExploreGoal(ActionSegment<int> actions)
+        /// <summary>
+        /// 将方向向量转换为移动动作
+        /// </summary>
+        private int GetMoveActionFromDirection(Vector2 direction)
         {
-            // 选择探索目标
-            if (currentTarget == Vector2.zero || Vector2.Distance(transform.position, currentTarget) < 0.5f)
-            {
-                currentTarget = GetRandomExplorationTarget();
-            }
-            
-            Vector2 direction = (currentTarget - (Vector2)transform.position).normalized;
-            MoveTowards(actions, direction);
-        }
-        
-        private void MoveTowards(ActionSegment<int> actions, Vector2 direction, bool actuallyMove = true)
-        {
-            if (!actuallyMove) return;
-            
-            // 转换方向为离散动作
             if (Mathf.Abs(direction.x) > Mathf.Abs(direction.y))
             {
-                actions[0] = direction.x > 0 ? 4 : 3; // 右或左
+                return direction.x > 0 ? 4 : 3; // 右或左
             }
             else
             {
-                actions[0] = direction.y > 0 ? 1 : 2; // 上或下
+                return direction.y > 0 ? 1 : 2; // 上或下
             }
         }
         
-        private Vector2 GetRandomExplorationTarget()
-        {
-            // 基于好奇心特征，选择探索范围
-            float explorationRange = 8f * (0.5f + goalSystem.curiosity * 0.5f);
-            return new Vector2(
-                UnityEngine.Random.Range(-explorationRange, explorationRange),
-                UnityEngine.Random.Range(-explorationRange, explorationRange)
-            );
-        }
-        
-        private bool HasKeyInInventory()
-        {
-            if (inventory == null) return false;
-            
-            for (int i = 0; i < inventory.Size; i++)
-            {
-                var slot = inventory.GetSlot(i);
-                if (!slot.IsEmpty && slot.Item.ItemName.Contains("Key"))
-                {
-                    return true;
-                }
-            }
-            return false;
-        }
+        // 移除所有硬编码的Execute*Goal方法
+        // 让强化学习模型自己学习如何达成目标
         
         private void HeuristicFallback(in ActionBuffers actionsOut)
         {
@@ -767,10 +979,12 @@ namespace AI.Core
             if (shouldFight)
             {
                 var nearestEnemy = nearbyEnemies[0];
-                Vector2 toEnemy = (nearestEnemy.transform.position - transform.position).normalized;
-                float distance = Vector2.Distance(transform.position, nearestEnemy.transform.position);
-                
-                Debug.Log($"[AIBrain] Heuristic: 发现敌人 {nearestEnemy.name}, 距离: {distance:F2}, 生命值: {aiStats.CurrentHealth}/{aiStats.Config.maxHealth}");
+                if (nearestEnemy != null && nearestEnemy.gameObject != null)
+                {
+                    Vector2 toEnemy = (nearestEnemy.transform.position - transform.position).normalized;
+                    float distance = Vector2.Distance(transform.position, nearestEnemy.transform.position);
+                    
+                    Debug.Log($"[AIBrain] Heuristic: 发现敌人 {nearestEnemy.name}, 距离: {distance:F2}, 生命值: {aiStats.CurrentHealth}/{aiStats.Config.maxHealth}");
                 
                 // 移动向敌人 - 更积极地接近
                 if (distance > 1.5f) // 距离大于1.5时主动接近
@@ -797,14 +1011,17 @@ namespace AI.Core
                     Debug.Log($"[AIBrain] Heuristic: 切换武器准备攻击 {nearestEnemy.name}");
                 }
                 
-                // 战斗时减少其他行为，专注战斗
-                return; // 直接返回，不执行其他行为
+                    // 战斗时减少其他行为，专注战斗
+                    return; // 直接返回，不执行其他行为
+                }
             }
             // 2. 逃跑行为
             else if (shouldFlee)
             {
                 var nearestEnemy = nearbyEnemies[0];
-                Vector2 awayFromEnemy = (transform.position - nearestEnemy.transform.position).normalized;
+                if (nearestEnemy != null && nearestEnemy.gameObject != null)
+                {
+                    Vector2 awayFromEnemy = (transform.position - nearestEnemy.transform.position).normalized;
                 
                 // 远离敌人
                 if (Mathf.Abs(awayFromEnemy.x) > Mathf.Abs(awayFromEnemy.y))
@@ -816,10 +1033,11 @@ namespace AI.Core
                     discreteActions[0] = awayFromEnemy.y > 0 ? 1 : 2;
                 }
                 
-                // 使用恢复物品
-                if (needHealing)
-                {
-                    discreteActions[2] = 1; // 使用第一个物品槽
+                    // 使用恢复物品
+                    if (needHealing)
+                    {
+                        discreteActions[2] = 1; // 使用第一个物品槽
+                    }
                 }
             }
             // 3. 拾取物品 - 智能优先级拾取
@@ -1174,6 +1392,27 @@ namespace AI.Core
                 return null;
             }
             
+            // 收集通信信息
+            var recentComms = new List<RecentCommunication>();
+            var communicator = GetComponent<AICommunicator>();
+            if (communicator != null)
+            {
+                var messages = communicator.GetRecentMessages(5);
+                foreach (var msg in messages)
+                {
+                    if (msg?.Message != null)
+                    {
+                        recentComms.Add(new RecentCommunication
+                        {
+                            SenderName = msg.Message.Sender?.name ?? "Unknown",
+                            MessageType = msg.Message.Type,
+                            Position = msg.Message.Position,
+                            TimeSince = Time.time - msg.Time
+                        });
+                    }
+                }
+            }
+            
             return new AIDecisionContext
             {
                 Stats = aiStats,
@@ -1182,7 +1421,10 @@ namespace AI.Core
                 NearbyEnemies = perception.GetNearbyEnemies(),
                 NearbyNPCs = perception.GetNearbyNPCs(),
                 NearbyItems = perception.GetNearbyItems(),
-                Memory = memory.GetAllMemories()
+                Memory = memory.GetAllMemories(),
+                CurrentGold = currencyManager?.CurrentGold ?? 0,
+                SourceGameObject = gameObject,
+                RecentCommunications = recentComms
             };
         }
         
@@ -1218,6 +1460,24 @@ namespace AI.Core
                     memory.RecordEvent("DeepSeekDecision", decision.RecommendedState.ToString());
                 }
             }
+        }
+        
+        /// <summary>
+        /// 检查背包中是否有钥匙
+        /// </summary>
+        private bool HasKeyInInventory()
+        {
+            if (inventory == null) return false;
+            
+            for (int i = 0; i < inventory.Size; i++)
+            {
+                var slot = inventory.GetSlot(i);
+                if (!slot.IsEmpty && slot.Item is Inventory.Items.KeyItem)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
     }
     

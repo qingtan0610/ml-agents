@@ -1,5 +1,6 @@
 using UnityEngine;
 using AI.Stats;
+using AI.Perception;
 using Combat;
 using System.Collections.Generic;
 using Rooms.Core;
@@ -43,9 +44,13 @@ namespace AI.Core
         
         [Header("Resource Management")]
         [SerializeField] private float efficientItemUseReward = 0.3f;  // 高效使用物品
-        [SerializeField] private float tradeSuccessReward = 0.2f;      // 交易成功
-        [SerializeField] private float avoidWasteReward = 0.1f;        // 避免浪费
+        [SerializeField] private float tradeSuccessReward = 1.0f;      // AI间交易成功 (大幅提升)
+        [SerializeField] private float npcTradeReward = 0.2f;          // NPC交易成功
+        [SerializeField] private float avoidWasteReward = 0.1f;        // 避免浪废
         [SerializeField] private float strategicPurchaseReward = 0.4f; // 战略性购买
+        [SerializeField] private float smartTradeReward = 1.5f;        // 智能交易决策 (新增)
+        [SerializeField] private float tradeInitiativeReward = 0.5f;   // 主动发起交易 (新增)
+        [SerializeField] private float inventoryOptimizationReward = 0.8f; // 背包优化 (新增)
         
         [Header("Survival Rewards")]
         [SerializeField] private float survivalBonus = 0.5f;           // 生存奖励系数（大幅提升）
@@ -80,6 +85,7 @@ namespace AI.Core
         private AIBrain aiBrain;
         private AICommunicator communicator;
         private Inventory.Inventory inventory;
+        private AITradeManager tradeManager;
         
         private void Awake()
         {
@@ -88,6 +94,7 @@ namespace AI.Core
             aiBrain = GetComponent<AIBrain>();
             communicator = GetComponent<AICommunicator>();
             inventory = GetComponent<Inventory.Inventory>();
+            tradeManager = GetComponent<AITradeManager>();
             
             // 订阅战斗事件
             if (combatSystem != null)
@@ -143,6 +150,9 @@ namespace AI.Core
             
             // 5. 资源管理奖励
             totalReward += CalculateResourceReward();
+            
+            // 6. 策略奖励
+            totalReward += CalculateStrategyReward();
             
             // 重置帧数据
             ResetFrameData();
@@ -310,6 +320,69 @@ namespace AI.Core
             }
             lastLonelinessLevel = currentLoneliness;
             
+            // 智能交流时机奖励
+            reward += CalculateSmartCommunicationReward();
+            
+            return reward;
+        }
+        
+        /// <summary>
+        /// 计算智能交流时机奖励 - 奖励在正确时机的交流
+        /// </summary>
+        private float CalculateSmartCommunicationReward()
+        {
+            if (communicator == null) return 0f;
+            
+            float reward = 0f;
+            bool justCommunicated = communicator.LastMessageTime > Time.time - 1f;
+            
+            if (!justCommunicated) return 0f;
+            
+            float healthRatio = aiStats.CurrentHealth / aiStats.Config.maxHealth;
+            float socialMood = aiStats.GetMood(MoodDimension.Social);
+            var currencyManager = GetComponent<Inventory.Managers.CurrencyManager>();
+            int gold = currencyManager?.CurrentGold ?? 0;
+            
+            // 1. 在紧急情况下求助 - 高奖励
+            if (healthRatio < 0.3f && gold < 30)
+            {
+                reward += shareInfoReward * 2f; // 双倍奖励紧急求助
+                Debug.Log($"[RewardCalculator] {name} 紧急求助交流奖励: {shareInfoReward * 2f}");
+            }
+            
+            // 2. 发现重要资源后分享 - 高奖励
+            var perception = GetComponent<AIPerception>();
+            if (perception != null)
+            {
+                var npcs = perception.GetNearbyNPCs();
+                var enemies = perception.GetNearbyEnemies();
+                
+                if (npcs.Count > 0) // 发现NPC后交流
+                {
+                    reward += shareInfoReward * 1.5f;
+                    Debug.Log($"[RewardCalculator] {name} 分享NPC发现奖励: {shareInfoReward * 1.5f}");
+                }
+                
+                if (enemies.Count > 2) // 发现大量敌人后警告队友
+                {
+                    reward += shareInfoReward;
+                    Debug.Log($"[RewardCalculator] {name} 战斗警告交流奖励: {shareInfoReward}");
+                }
+            }
+            
+            // 3. 在孤独时主动交流 - 中等奖励
+            if (socialMood < -20f)
+            {
+                reward += communicationReward * 1.5f;
+                Debug.Log($"[RewardCalculator] {name} 缓解孤独交流奖励: {communicationReward * 1.5f}");
+            }
+            
+            // 4. 定期维护社交关系 - 小奖励
+            if (socialMood > -10f && socialMood < 30f)
+            {
+                reward += communicationReward * 0.5f;
+            }
+            
             return reward;
         }
         
@@ -351,7 +424,158 @@ namespace AI.Core
                 Debug.Log($"[RewardCalculator] {name} 拾取物品奖励: {pickupItemReward}");
             }
             
+            // AI间交易奖励
+            reward += CalculateTradeReward();
+            
+            // 背包管理奖励
+            reward += CalculateInventoryManagementReward();
+            
             lastItemCount = currentItemCount;
+            
+            return reward;
+        }
+        
+        /// <summary>
+        /// 计算交易相关奖励
+        /// </summary>
+        private float CalculateTradeReward()
+        {
+            float reward = 0f;
+            
+            if (tradeManager == null) return reward;
+            
+            // 成功的AI间交易奖励
+            int tradeCount = tradeManager.GetTradeHistoryCount();
+            if (tradeCount > 0)
+            {
+                // 假设最近有交易发生，给予奖励
+                reward += tradeSuccessReward;
+                Debug.Log($"[RewardCalculator] {name} AI间交易成功奖励: {tradeSuccessReward}");
+            }
+            
+            // 主动发起交易的奖励（通过交易管理器的状态检测）
+            // 这需要交易管理器提供更多状态信息
+            
+            return reward;
+        }
+        
+        /// <summary>
+        /// 计算背包管理奖励
+        /// </summary>
+        private float CalculateInventoryManagementReward()
+        {
+            float reward = 0f;
+            
+            if (inventory == null) return reward;
+            
+            float inventoryFullness = GetInventoryFullness();
+            int currentUsedSlots = GetUsedSlotCount();
+            
+            // 背包接近满时主动整理的奖励
+            if (inventoryFullness > 0.8f && currentUsedSlots < lastItemCount)
+            {
+                reward += inventoryOptimizationReward;
+                Debug.Log($"[RewardCalculator] {name} 背包优化奖励: {inventoryOptimizationReward}");
+            }
+            
+            // 保持合理背包使用率的奖励
+            if (inventoryFullness > 0.3f && inventoryFullness < 0.9f)
+            {
+                reward += 0.1f; // 小幅奖励合理的背包管理
+            }
+            
+            return reward;
+        }
+        
+        /// <summary>
+        /// 获取背包使用率
+        /// </summary>
+        private float GetInventoryFullness()
+        {
+            if (inventory == null) return 0f;
+            
+            int usedSlots = 0;
+            for (int i = 0; i < inventory.Size; i++)
+            {
+                if (!inventory.GetSlot(i).IsEmpty)
+                    usedSlots++;
+            }
+            return (float)usedSlots / inventory.Size;
+        }
+        
+        private float CalculateStrategyReward()
+        {
+            float reward = 0f;
+            
+            // 追击决策奖励
+            var controller = GetComponent<AIController>();
+            if (controller != null && controller.ChaseTarget != null)
+            {
+                // AI选择追击而不是无效攻击，给予奖励
+                reward += 0.1f;
+            }
+            
+            // 智能撤退奖励
+            if (aiStats.CurrentHealth < aiStats.Config.maxHealth * 0.3f)
+            {
+                // 低血量时远离敌人
+                var perception = GetComponent<AIPerception>();
+                if (perception != null)
+                {
+                    var enemies = perception.GetNearbyEnemies();
+                    if (enemies.Count > 0)
+                    {
+                        float minDistance = float.MaxValue;
+                        foreach (var enemy in enemies)
+                        {
+                            float dist = Vector2.Distance(transform.position, enemy.transform.position);
+                            if (dist < minDistance) minDistance = dist;
+                        }
+                        
+                        // 距离越远奖励越高
+                        if (minDistance > 5f)
+                        {
+                            reward += 0.2f;
+                        }
+                    }
+                }
+            }
+            
+            // 资源寻找奖励
+            if (aiStats.CurrentThirst < aiStats.Config.maxThirst * 0.4f ||
+                aiStats.CurrentHunger < aiStats.Config.maxHunger * 0.4f)
+            {
+                // 低资源时接近NPC或已知资源点
+                var memory = GetComponent<AIMemory>();
+                var rb = GetComponent<Rigidbody2D>();
+                if (memory != null && rb != null && memory.IsMovingTowardImportantLocation(transform.position, rb.velocity))
+                {
+                    reward += 0.15f;
+                }
+            }
+            
+            // 团队协作奖励
+            var allAIs = FindObjectsOfType<AIBrain>();
+            int nearbyTeammates = 0;
+            foreach (var ai in allAIs)
+            {
+                if (ai != aiBrain && Vector2.Distance(transform.position, ai.transform.position) < 10f)
+                {
+                    nearbyTeammates++;
+                }
+            }
+            
+            // 根据情况判断是否应该聚集
+            if (nearbyTeammates > 0)
+            {
+                // 检查是否在传送门附近
+                var portal = GameObject.FindObjectOfType<TeleportDevice>();
+                if (portal != null && Vector2.Distance(transform.position, portal.transform.position) < 15f)
+                {
+                    // 在传送门附近聚集是好的
+                    reward += teamProximityReward * nearbyTeammates;
+                }
+            }
             
             return reward;
         }
