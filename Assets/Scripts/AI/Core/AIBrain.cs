@@ -53,6 +53,7 @@ namespace AI.Core
         private AIGoalSystem goalSystem;
         private AIBehaviorAnalyzer behaviorAnalyzer;
         private AIContextualMemory contextualMemory;
+        private AIDecision lastDecision; // 存储最后的DeepSeek决策
         
         // ML-Agents观察空间
         private const int GRID_SIZE = 16; // 房间网格大小
@@ -799,7 +800,7 @@ namespace AI.Core
             {
                 discreteActions[4] = 1; // 攻击
                 // 简单移动逻辑：朝敌人移动
-                if (enemies.Count > 0)
+                if (enemies.Count > 0 && enemies[0] != null)
                 {
                     Vector2 toEnemy = (enemies[0].transform.position - transform.position).normalized;
                     discreteActions[0] = GetMoveActionFromDirection(toEnemy);
@@ -976,8 +977,12 @@ namespace AI.Core
             }
             
             // 1. 战斗行为 - 次高优先级
-            if (shouldFight)
+            if (shouldFight && nearbyEnemies.Count > 0)
             {
+                // 清理已销毁的敌人
+                nearbyEnemies.RemoveAll(e => e == null);
+                if (nearbyEnemies.Count == 0) return;
+                
                 var nearestEnemy = nearbyEnemies[0];
                 if (nearestEnemy != null && nearestEnemy.gameObject != null)
                 {
@@ -1440,6 +1445,9 @@ namespace AI.Core
             // 应用DeepSeek的决策建议
             if (decision != null)
             {
+                // 存储决策供UI显示
+                lastDecision = decision;
+                
                 // 只在状态真正改变时更新
                 if (currentState != decision.RecommendedState)
                 {

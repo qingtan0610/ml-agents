@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Linq;
 using AI.Core;
 using Enemy;
 
@@ -28,6 +29,7 @@ namespace Camera
         
         [Header("Detection")]
         [SerializeField] private LayerMask detectableLayers = -1; // 默认检测所有层
+        [SerializeField] private float clickDetectionRadius = 2.5f; // 点击检测半径
         
         // Camera reference
         private UnityEngine.Camera mainCamera;
@@ -36,7 +38,7 @@ namespace Camera
         // Double click detection
         private float lastClickTime = 0f;
         private GameObject lastClickedObject = null;
-        private float doubleClickTime = 0.3f;
+        private float doubleClickTime = 0.5f; // 增加到0.5秒，更容易双击
         
         // Debug visualization
         private Vector2 lastClickWorldPos;
@@ -63,45 +65,53 @@ namespace Camera
                 mainCamera.orthographic = true;
                 mainCamera.orthographicSize = currentZoom;
             }
+            
         }
         
         private void Update()
         {
-            // ESC to stop following
-            if (Input.GetKeyDown(KeyCode.Escape))
+            try
             {
-                StopFollowing();
-            }
-            
-            // Handle double click
-            if (Input.GetMouseButtonDown(0))
-            {
-                HandleDoubleClick();
-            }
-            
-            // Tab key for overview panel
-            if (Input.GetKeyDown(KeyCode.Tab))
-            {
-                ToggleOverviewPanel();
-            }
-            
-            if (!isFollowing)
-            {
-                // Free camera movement
-                HandleMovement();
+                // ESC to stop following
+                if (Input.GetKeyDown(KeyCode.Escape))
+                {
+                    StopFollowing();
+                }
+                
+                // Handle double click (only in non-control mode)
+                if (Input.GetMouseButtonDown(0) && !isControllingEnemy)
+                {
+                    HandleDoubleClick();
+                }
+                
+                // Tab key for overview panel
+                if (Input.GetKeyDown(KeyCode.Tab))
+                {
+                    ToggleOverviewPanel();
+                }
+                
+                if (!isFollowing)
+                {
+                    // Free camera movement
+                    HandleMovement();
+                    HandleZoom();
+                }
+                else if (isControllingEnemy && currentEnemy != null)
+                {
+                    // Control enemy movement
+                    HandleEnemyControl();
+                }
+                
+                // Zoom always works
                 HandleZoom();
+                
+                // Update UI
+                UpdateUI();
             }
-            else if (isControllingEnemy && currentEnemy != null)
+            catch (System.Exception e)
             {
-                // Control enemy movement
-                HandleEnemyControl();
+                UnityEngine.Debug.LogError($"[SimpleCameraController] Update error: {e.Message}\n{e.StackTrace}");
             }
-            
-            // Zoom always works
-            HandleZoom();
-            
-            // Update UI
-            UpdateUI();
         }
         
         private void LateUpdate()
@@ -231,15 +241,13 @@ namespace Camera
             lastClickWorldPos = mousePos2D;
             debugClickVisualTime = Time.time + 1f; // Show for 1 second
             
-            // Check for AI or Enemy with a larger radius
-            float searchRadius = 1.5f; // Increased from 0.5f
+            // Check for AI or Enemy with configurable radius
+            float searchRadius = clickDetectionRadius;
             
-            // 如果没有设置检测层，默认检测Player和Enemy层
+            // 如果没有设置检测层，默认检测所有层
             if (detectableLayers == -1)
             {
-                int playerLayer = LayerMask.NameToLayer("Player");
-                int enemyLayer = LayerMask.NameToLayer("Enemy");
-                detectableLayers = (1 << playerLayer) | (1 << enemyLayer);
+                detectableLayers = ~0; // All layers
             }
             
             Collider2D[] colliders = Physics2D.OverlapCircleAll(mousePos2D, searchRadius, detectableLayers);
@@ -304,8 +312,10 @@ namespace Camera
                         if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
                         {
                             isControllingEnemy = true;
-                            enemy.enabled = false; // Disable enemy AI
-                            UnityEngine.Debug.Log($"[SimpleCameraController] Now controlling enemy: {enemy.name}");
+                            // Don't disable the entire enemy component, just stop its AI behavior
+                            // enemy.enabled = false; // This might cause issues
+                            var enemyAI = enemy.GetComponent<AI.Core.AIBrain>();
+                            if (enemyAI != null) enemyAI.enabled = false;
                         }
                     }
                     
@@ -329,7 +339,9 @@ namespace Camera
             
             if (overviewPanel != null)
             {
-                overviewPanel.SetActive(!overviewPanel.activeSelf);
+                bool newState = !overviewPanel.activeSelf;
+                overviewPanel.SetActive(newState);
+                UnityEngine.Debug.Log($"[SimpleCameraController] Overview panel toggled to: {newState}");
             }
         }
         
@@ -401,7 +413,9 @@ namespace Camera
             // If controlling enemy, re-enable its AI
             if (isControllingEnemy && currentEnemy != null)
             {
-                currentEnemy.enabled = true;
+                // Re-enable AI component if it exists
+                var enemyAI = currentEnemy.GetComponent<AI.Core.AIBrain>();
+                if (enemyAI != null) enemyAI.enabled = true;
                 isControllingEnemy = false;
             }
             
@@ -454,8 +468,8 @@ namespace Camera
             aiStatusPanel.transform.SetParent(canvas.transform);
             
             var rect = aiStatusPanel.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0, 0.7f);
-            rect.anchorMax = new Vector2(0.3f, 1);
+            rect.anchorMin = new Vector2(0, 0.5f);
+            rect.anchorMax = new Vector2(0.35f, 1);
             rect.offsetMin = new Vector2(10, 10);
             rect.offsetMax = new Vector2(-10, -10);
             
@@ -469,6 +483,10 @@ namespace Camera
             aiStatusText = statusTextGO.AddComponent<TMPro.TextMeshProUGUI>();
             aiStatusText.fontSize = 14;
             aiStatusText.color = Color.white;
+            
+            // 配置字体 - 使用默认字体避免性能问题
+            // 中文支持请在Unity编辑器中设置
+            
             var textRect = statusTextGO.GetComponent<RectTransform>();
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
@@ -494,8 +512,8 @@ namespace Camera
             enemyHealthBar.transform.SetParent(canvas.transform);
             
             var rect = enemyHealthBar.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.3f, 0.9f);
-            rect.anchorMax = new Vector2(0.7f, 0.95f);
+            rect.anchorMin = new Vector2(0.3f, 0.94f);
+            rect.anchorMax = new Vector2(0.7f, 0.96f);
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             
@@ -532,9 +550,11 @@ namespace Camera
         
         private void UpdateUI()
         {
-            // Update AI status panel
-            if (currentAI != null && aiStatusText != null)
+            try
             {
+                // Update AI status panel
+                if (currentAI != null && aiStatusText != null)
+                {
                 var aiStats = currentAI.GetComponent<AI.Stats.AIStats>();
                 var aiController = currentAI.GetComponent<AI.Core.AIController>();
                 
@@ -543,10 +563,10 @@ namespace Camera
                     string status = $"<b>{currentAI.name}</b>\n\n";
                     
                     // Basic stats
-                    status += $"生命: {aiStats.GetStat(AI.Stats.StatType.Health):F0}/{aiStats.Config?.maxHealth:F0}\n";
-                    status += $"饥饿: {aiStats.GetStat(AI.Stats.StatType.Hunger):F0}/{aiStats.Config?.maxHunger:F0}\n";
-                    status += $"口渴: {aiStats.GetStat(AI.Stats.StatType.Thirst):F0}/{aiStats.Config?.maxThirst:F0}\n";
-                    status += $"体力: {aiStats.GetStat(AI.Stats.StatType.Stamina):F0}/{aiStats.Config?.maxStamina:F0}\n\n";
+                    status += $"<color=#90EE90>生命: {aiStats.GetStat(AI.Stats.StatType.Health):F0}/{aiStats.Config?.maxHealth:F0}</color>\n";
+                    status += $"<color=#FFA500>饥饿: {aiStats.GetStat(AI.Stats.StatType.Hunger):F0}/{aiStats.Config?.maxHunger:F0}</color>\n";
+                    status += $"<color=#87CEEB>口渴: {aiStats.GetStat(AI.Stats.StatType.Thirst):F0}/{aiStats.Config?.maxThirst:F0}</color>\n";
+                    status += $"<color=#FFFF00>体力: {aiStats.GetStat(AI.Stats.StatType.Stamina):F0}/{aiStats.Config?.maxStamina:F0}</color>\n\n";
                     
                     // Mood - using GetMood with MoodDimension
                     status += $"情绪: {aiStats.GetMood(AI.Stats.MoodDimension.Emotion):F1}\n";
@@ -558,7 +578,7 @@ namespace Camera
                     if (stateField != null)
                     {
                         var state = stateField.GetValue(currentAI);
-                        status += $"状态: {state}\n";
+                        status += $"<color=#FF69B4>状态: {state}</color>\n";
                     }
                     
                     // Target - using reflection to access private field
@@ -569,6 +589,60 @@ namespace Camera
                         if (target != null)
                         {
                             status += $"目标: {target.name}\n";
+                        }
+                    }
+                    
+                    status += "\n<b>DeepSeek决策</b>\n";
+                    
+                    // Get DeepSeek decision info using reflection
+                    var lastDecisionField = typeof(AIBrain).GetField("lastDecision", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (lastDecisionField != null)
+                    {
+                        var lastDecision = lastDecisionField.GetValue(currentAI) as AI.Decision.AIDecision;
+                        if (lastDecision != null && !string.IsNullOrEmpty(lastDecision.Explanation))
+                        {
+                            status += $"<color=#98FB98>规划: {lastDecision.Explanation}</color>\n";
+                            if (lastDecision.SpecificActions != null && lastDecision.SpecificActions.Count > 0)
+                            {
+                                status += "行动:\n";
+                                foreach (var action in lastDecision.SpecificActions)
+                                {
+                                    status += $"  • {action}\n";
+                                }
+                            }
+                        }
+                        else
+                        {
+                            status += "<color=#808080>规划: 暂无</color>\n";
+                        }
+                    }
+                    else
+                    {
+                        status += "<color=#808080>规划: 暂无</color>\n";
+                    }
+                    
+                    // Get recent communications from memory
+                    var memoryField = typeof(AIBrain).GetField("memory", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (memoryField != null)
+                    {
+                        var memory = memoryField.GetValue(currentAI) as AI.Core.AIMemory;
+                        if (memory != null)
+                        {
+                            var recentEvents = memory.GetRecentEvents(3);
+                            var commEvents = recentEvents.Where(e => e.EventType == AI.Core.EventType.Communication).ToList();
+                            
+                            status += "\n<b>最近对话</b>\n";
+                            if (commEvents.Count > 0)
+                            {
+                                foreach (var evt in commEvents)
+                                {
+                                    status += $"<color=#DDA0DD>{evt.Description}</color>\n";
+                                }
+                            }
+                            else
+                            {
+                                status += "<color=#808080>对话: 暂无</color>\n";
+                            }
                         }
                     }
                     
@@ -627,6 +701,11 @@ namespace Camera
                         fillImage.color = Color.red;
                     }
                 }
+            }
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"[SimpleCameraController] UpdateUI error: {e.Message}\n{e.StackTrace}");
             }
         }
         
