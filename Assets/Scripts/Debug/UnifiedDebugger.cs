@@ -128,9 +128,9 @@ namespace PlayerDebug
                     aiStats.Respawn(spawnPos);
                     
                     // 确保相机跟随
-                    if (Camera.main != null)
+                    if (UnityEngine.Camera.main != null)
                     {
-                        Camera.main.transform.position = new Vector3(spawnPos.x, spawnPos.y, Camera.main.transform.position.z);
+                        UnityEngine.Camera.main.transform.position = new Vector3(spawnPos.x, spawnPos.y, UnityEngine.Camera.main.transform.position.z);
                     }
                 }
                 else

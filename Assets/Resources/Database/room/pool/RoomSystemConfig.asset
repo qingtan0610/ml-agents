@@ -29,8 +29,8 @@ MonoBehaviour:
     spawnWeight: 1
     minMapLevel: 1
     monsterPool: {fileID: 11400000, guid: 9d9aecbd36c01044fb0bce841fcfefaa, type: 2}
-    minMonsterCount: 3
-    maxMonsterCount: 6
+    minMonsterCount: 1
+    maxMonsterCount: 2
     maxMonsterDifficulty: 5
     lockDoorsOnEntry: 1
     requiresClearance: 1

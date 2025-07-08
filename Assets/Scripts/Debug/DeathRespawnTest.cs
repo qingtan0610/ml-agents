@@ -186,9 +186,9 @@ namespace PlayerDebug
             }
             
             // 移动相机
-            if (Camera.main != null)
+            if (UnityEngine.Camera.main != null)
             {
-                Camera.main.transform.position = new Vector3(spawnPos.x, spawnPos.y, Camera.main.transform.position.z);
+                UnityEngine.Camera.main.transform.position = new Vector3(spawnPos.x, spawnPos.y, UnityEngine.Camera.main.transform.position.z);
             }
             
             // 验证复活结果

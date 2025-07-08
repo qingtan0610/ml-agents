@@ -1479,14 +1479,24 @@ namespace AI.Core
             }
             return false;
         }
+        
+        /// <summary>
+        /// 获取当前AI状态
+        /// </summary>
+        public AIState GetCurrentState()
+        {
+            return currentState;
+        }
     }
     
     public enum AIState
     {
+        Idle,          // 空闲
         Exploring,      // 探索
         Fighting,       // 战斗
         Fleeing,       // 逃跑
         Seeking,       // 寻找资源
+        Trading,       // 交易
         Interacting,   // 交互
         Communicating, // 通信
         Resting,       // 休息

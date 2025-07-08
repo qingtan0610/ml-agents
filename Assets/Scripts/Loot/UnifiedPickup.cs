@@ -52,7 +52,7 @@ namespace Loot
                 
                 if (spriteRenderer == null)
                 {
-                    Debug.LogError($"[UnifiedPickup] No SpriteRenderer found on {gameObject.name}!");
+                    UnityEngine.Debug.LogError($"[UnifiedPickup] No SpriteRenderer found on {gameObject.name}!");
                 }
             }
         }

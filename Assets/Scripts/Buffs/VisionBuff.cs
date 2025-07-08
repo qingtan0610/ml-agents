@@ -62,7 +62,7 @@ namespace Buffs
             if (perception != null)
             {
                 perception.SetEnhancedVision(true, data.Duration);
-                Debug.Log($"[VisionBuff] 为 {target.name} 启用增强视野，持续 {data.Duration} 秒");
+                UnityEngine.Debug.Log($"[VisionBuff] 为 {target.name} 启用增强视野，持续 {data.Duration} 秒");
             }
         }
         

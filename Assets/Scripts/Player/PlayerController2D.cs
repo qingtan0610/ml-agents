@@ -21,7 +21,7 @@ namespace Player
         [SerializeField] private KeyCode interactKey = KeyCode.E;
         
         [Header("Camera")]
-        [SerializeField] private Camera playerCamera;
+        [SerializeField] private UnityEngine.Camera playerCamera;
         [SerializeField] private float cameraZ = -10f;
         [SerializeField] private float cameraSmooth = 0.1f;
         
@@ -65,7 +65,7 @@ namespace Player
         {
             if (playerCamera == null)
             {
-                playerCamera = Camera.main;
+                playerCamera = UnityEngine.Camera.main;
             }
             
             if (playerCamera != null)
@@ -208,7 +208,7 @@ namespace Player
         private void HandleRotation()
         {
             // 面向鼠标方向
-            Vector3 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+            Vector3 mousePos = UnityEngine.Camera.main.ScreenToWorldPoint(Input.mousePosition);
             mousePos.z = transform.position.z;
             
             Vector2 lookDir = (mousePos - transform.position).normalized;

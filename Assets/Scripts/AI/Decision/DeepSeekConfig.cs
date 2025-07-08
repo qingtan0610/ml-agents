@@ -142,17 +142,5 @@ namespace AI.Decision
         {
             return !string.IsNullOrEmpty(GetApiKey());
         }
-        
-#if UNITY_EDITOR
-        [UnityEditor.MenuItem("Assets/Create/AI/DeepSeek Config")]
-        private static void CreateDeepSeekConfig()
-        {
-            var asset = CreateInstance<DeepSeekConfig>();
-            UnityEditor.AssetDatabase.CreateAsset(asset, "Assets/DeepSeekConfig.asset");
-            UnityEditor.AssetDatabase.SaveAssets();
-            UnityEditor.EditorUtility.FocusProjectWindow();
-            UnityEditor.Selection.activeObject = asset;
-        }
-#endif
     }
 }

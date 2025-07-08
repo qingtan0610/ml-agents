@@ -390,9 +390,9 @@ namespace Player
             }
             
             // 确保相机跟随
-            if (Camera.main != null)
+            if (UnityEngine.Camera.main != null)
             {
-                Camera.main.transform.position = new Vector3(spawnPosition.x, spawnPosition.y, Camera.main.transform.position.z);
+                UnityEngine.Camera.main.transform.position = new Vector3(spawnPosition.x, spawnPosition.y, UnityEngine.Camera.main.transform.position.z);
             }
             
             // 最后再次验证

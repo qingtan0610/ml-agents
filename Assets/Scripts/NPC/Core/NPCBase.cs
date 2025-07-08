@@ -164,9 +164,9 @@ namespace NPC.Core
             if (interactionPrompt == null) return;
             
             // 始终面向相机
-            if (Camera.main != null)
+            if (UnityEngine.Camera.main != null)
             {
-                interactionPrompt.transform.rotation = Camera.main.transform.rotation;
+                interactionPrompt.transform.rotation = UnityEngine.Camera.main.transform.rotation;
             }
         }
         

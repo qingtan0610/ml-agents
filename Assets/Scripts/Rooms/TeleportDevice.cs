@@ -146,10 +146,10 @@ namespace Rooms
             }
             
             // 更新状态文本旋转（面向相机）
-            if (statusText != null && Camera.main != null)
+            if (statusText != null && UnityEngine.Camera.main != null)
             {
                 statusText.transform.rotation = Quaternion.LookRotation(
-                    statusText.transform.position - Camera.main.transform.position
+                    statusText.transform.position - UnityEngine.Camera.main.transform.position
                 );
             }
         }
