@@ -23,6 +23,9 @@ namespace Camera
         [Header("UI")]
         [SerializeField] private GameObject overviewPanel;
         
+        [Header("Detection")]
+        [SerializeField] private LayerMask detectableLayers = -1; // 默认检测所有层
+        
         // Camera reference
         private UnityEngine.Camera mainCamera;
         private float currentZoom = 20f;
@@ -31,6 +34,10 @@ namespace Camera
         private float lastClickTime = 0f;
         private GameObject lastClickedObject = null;
         private float doubleClickTime = 0.3f;
+        
+        // Debug visualization
+        private Vector2 lastClickWorldPos;
+        private float debugClickVisualTime = 0f;
         
         private void Awake()
         {
@@ -54,7 +61,7 @@ namespace Camera
             {
                 isFollowing = false;
                 followTarget = null;
-                Debug.Log("[SimpleCameraController] Stopped following");
+                UnityEngine.Debug.Log("[SimpleCameraController] Stopped following");
             }
             
             // Handle double click
@@ -75,6 +82,9 @@ namespace Camera
                 HandleMovement();
                 HandleZoom();
             }
+            
+            // Zoom always works
+            HandleZoom();
         }
         
         private void LateUpdate()
@@ -132,15 +142,39 @@ namespace Camera
             Vector3 mousePos = mainCamera.ScreenToWorldPoint(Input.mousePosition);
             Vector2 mousePos2D = new Vector2(mousePos.x, mousePos.y);
             
-            // Check for AI or Enemy with a small radius
-            Collider2D[] colliders = Physics2D.OverlapCircleAll(mousePos2D, 0.5f);
+            // Store for debug visualization
+            lastClickWorldPos = mousePos2D;
+            debugClickVisualTime = Time.time + 1f; // Show for 1 second
+            
+            // Check for AI or Enemy with a larger radius
+            float searchRadius = 1.5f; // Increased from 0.5f
+            
+            // 如果没有设置检测层，默认检测Player和Enemy层
+            if (detectableLayers == -1)
+            {
+                int playerLayer = LayerMask.NameToLayer("Player");
+                int enemyLayer = LayerMask.NameToLayer("Enemy");
+                detectableLayers = (1 << playerLayer) | (1 << enemyLayer);
+            }
+            
+            Collider2D[] colliders = Physics2D.OverlapCircleAll(mousePos2D, searchRadius, detectableLayers);
             
             GameObject clickedObject = null;
             
             // Find the most relevant object (AI or Enemy)
             foreach (var collider in colliders)
             {
-                if (collider.GetComponent<AIBrain>() != null || collider.GetComponent<Enemy2D>() != null)
+                // Check for AI
+                var aiBrain = collider.GetComponent<AIBrain>();
+                if (aiBrain != null)
+                {
+                    clickedObject = collider.gameObject;
+                    break;
+                }
+                
+                // Check for Enemy
+                var enemy = collider.GetComponent<Enemy2D>();
+                if (enemy != null)
                 {
                     clickedObject = collider.gameObject;
                     break;
@@ -161,7 +195,6 @@ namespace Camera
                         currentZoom = 10f;
                         if (mainCamera != null)
                             mainCamera.orthographicSize = currentZoom;
-                        UnityEngine.Debug.Log($"[SimpleCameraController] Following AI: {clickedObject.name}");
                     }
                     // Check if it's an enemy
                     else if (clickedObject.GetComponent<Enemy2D>() != null)
@@ -171,7 +204,6 @@ namespace Camera
                         currentZoom = 8f;
                         if (mainCamera != null)
                             mainCamera.orthographicSize = currentZoom;
-                        UnityEngine.Debug.Log($"[SimpleCameraController] Following Enemy: {clickedObject.name}");
                     }
                     
                     lastClickedObject = null; // Reset
@@ -255,6 +287,31 @@ namespace Camera
             
             // Start hidden
             overviewPanel.SetActive(false);
+        }
+        
+        // Debug visualization
+        private void OnDrawGizmos()
+        {
+            // Show click detection area
+            if (Time.time < debugClickVisualTime)
+            {
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawWireSphere(lastClickWorldPos, 1.5f);
+                
+                // Draw cross at click position
+                Gizmos.color = Color.red;
+                float crossSize = 0.5f;
+                Gizmos.DrawLine(lastClickWorldPos + Vector2.left * crossSize, lastClickWorldPos + Vector2.right * crossSize);
+                Gizmos.DrawLine(lastClickWorldPos + Vector2.up * crossSize, lastClickWorldPos + Vector2.down * crossSize);
+            }
+            
+            // Show follow target
+            if (isFollowing && followTarget != null)
+            {
+                Gizmos.color = Color.green;
+                Gizmos.DrawWireSphere(followTarget.position, 0.5f);
+                Gizmos.DrawLine(transform.position, followTarget.position);
+            }
         }
     }
 }
