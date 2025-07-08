@@ -110,7 +110,8 @@ namespace Camera
             }
             catch (System.Exception e)
             {
-                UnityEngine.Debug.LogError($"[SimpleCameraController] Update error: {e.Message}\n{e.StackTrace}");
+                // 不使用LogError避免触发Unity的Error Pause
+                UnityEngine.Debug.LogWarning($"[SimpleCameraController] Update error: {e.Message}");
             }
         }
         
@@ -354,7 +355,9 @@ namespace Camera
                 canvas = new GameObject("GameCanvas");
                 var canvasComp = canvas.AddComponent<Canvas>();
                 canvasComp.renderMode = RenderMode.ScreenSpaceOverlay;
-                canvas.AddComponent<UnityEngine.UI.CanvasScaler>();
+                canvasComp.sortingOrder = 0; // 基础层级
+                var scaler = canvas.AddComponent<UnityEngine.UI.CanvasScaler>();
+                scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
                 canvas.AddComponent<UnityEngine.UI.GraphicRaycaster>();
             }
             
@@ -363,21 +366,21 @@ namespace Camera
             overviewPanel.transform.SetParent(canvas.transform);
             
             var rect = overviewPanel.AddComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = new Vector2(50, 50);
-            rect.offsetMax = new Vector2(-50, -50);
+            rect.anchorMin = new Vector2(0.2f, 0.1f);  // 从屏幕20%开始
+            rect.anchorMax = new Vector2(0.8f, 0.9f);  // 到屏幕80%结束
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
             
-            // Background
+            // Background with subtle styling
             var bg = overviewPanel.AddComponent<UnityEngine.UI.Image>();
-            bg.color = new Color(0, 0, 0, 0.9f);
+            bg.color = new Color(0.1f, 0.1f, 0.15f, 0.85f); // 深蓝灰色背景，更美观
             
             // Title
             var title = new GameObject("Title");
             title.transform.SetParent(overviewPanel.transform);
             var titleText = title.AddComponent<TMPro.TextMeshProUGUI>();
-            titleText.text = "AI Overview";
-            titleText.fontSize = 24;
+            titleText.text = "AI总览";
+            titleText.fontSize = 16; // 减小标题字体
             titleText.alignment = TMPro.TextAlignmentOptions.Center;
             var titleRect = title.GetComponent<RectTransform>();
             titleRect.anchorMin = new Vector2(0, 0.9f);
@@ -389,7 +392,7 @@ namespace Camera
             var content = new GameObject("Content");
             content.transform.SetParent(overviewPanel.transform);
             var contentText = content.AddComponent<TMPro.TextMeshProUGUI>();
-            contentText.fontSize = 16;
+            contentText.fontSize = 11; // 减小内容字体，为4个AI留空间
             var contentRect = content.GetComponent<RectTransform>();
             contentRect.anchorMin = new Vector2(0.1f, 0.1f);
             contentRect.anchorMax = new Vector2(0.9f, 0.85f);
@@ -468,30 +471,30 @@ namespace Camera
             aiStatusPanel.transform.SetParent(canvas.transform);
             
             var rect = aiStatusPanel.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0, 0.5f);
-            rect.anchorMax = new Vector2(0.35f, 1);
-            rect.offsetMin = new Vector2(10, 10);
-            rect.offsetMax = new Vector2(-10, -10);
+            rect.anchorMin = new Vector2(0f, 1f);      // 左上角anchor点
+            rect.anchorMax = new Vector2(0f, 1f);      // 同样是左上角anchor点
+            rect.anchoredPosition = new Vector2(0, 0);  // 相对于anchor的位置
+            rect.sizeDelta = new Vector2(300, 200);     // 面板的实际大小
+            rect.pivot = new Vector2(0, 1);             // 设置pivot为左上角
             
-            // Background
+            // Background with gradient-like styling
             var bg = aiStatusPanel.AddComponent<UnityEngine.UI.Image>();
-            bg.color = new Color(0, 0, 0, 0.8f);
+            bg.color = new Color(0.05f, 0.1f, 0.2f, 0.8f); // 深蓝色背景
             
             // Status text
             var statusTextGO = new GameObject("StatusText");
             statusTextGO.transform.SetParent(aiStatusPanel.transform);
             aiStatusText = statusTextGO.AddComponent<TMPro.TextMeshProUGUI>();
-            aiStatusText.fontSize = 14;
+            aiStatusText.fontSize = 10; // 更小的字体适合紧凑布局
             aiStatusText.color = Color.white;
             
-            // 配置字体 - 使用默认字体避免性能问题
-            // 中文支持请在Unity编辑器中设置
+            // 配置字体
             
             var textRect = statusTextGO.GetComponent<RectTransform>();
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = new Vector2(10, 10);
-            textRect.offsetMax = new Vector2(-10, -10);
+            textRect.offsetMin = new Vector2(5, 5);  // 减小内边距
+            textRect.offsetMax = new Vector2(-5, -5);
         }
         
         private void CreateEnemyHealthBar()
@@ -512,40 +515,52 @@ namespace Camera
             enemyHealthBar.transform.SetParent(canvas.transform);
             
             var rect = enemyHealthBar.AddComponent<RectTransform>();
-            rect.anchorMin = new Vector2(0.3f, 0.94f);
-            rect.anchorMax = new Vector2(0.7f, 0.96f);
+            rect.anchorMin = new Vector2(0.25f, 0.95f);  // 更宽一些
+            rect.anchorMax = new Vector2(0.75f, 0.97f);  // 更细一些
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             
-            // Background
+            // Background with subtle dark theme
             var bg = enemyHealthBar.AddComponent<UnityEngine.UI.Image>();
-            bg.color = new Color(0.2f, 0, 0, 0.8f);
+            bg.color = new Color(0.1f, 0.1f, 0.1f, 0.8f); // 深灰色背景，更低调
             
-            // Health bar
-            var healthBarGO = new GameObject("HealthBar");
+            // 简单的血条，不用复杂的Slider
+            var healthBarGO = new GameObject("HealthBarDisplay");
             healthBarGO.transform.SetParent(enemyHealthBar.transform);
             
-            var healthRect = healthBarGO.AddComponent<RectTransform>();
-            healthRect.anchorMin = Vector2.zero;
-            healthRect.anchorMax = Vector2.one;
-            healthRect.offsetMin = new Vector2(2, 2);
-            healthRect.offsetMax = new Vector2(-2, -2);
+            var healthBarRect = healthBarGO.GetComponent<RectTransform>();
+            if (healthBarRect == null) healthBarRect = healthBarGO.AddComponent<RectTransform>();
+            healthBarRect.anchorMin = new Vector2(0.1f, 0.3f);
+            healthBarRect.anchorMax = new Vector2(0.9f, 0.7f);
+            healthBarRect.offsetMin = Vector2.zero;
+            healthBarRect.offsetMax = Vector2.zero;
             
-            enemyHealthSlider = healthBarGO.AddComponent<UnityEngine.UI.Slider>();
-            enemyHealthSlider.fillRect = healthRect;
+            // 血条背景
+            var bgImage = healthBarGO.AddComponent<UnityEngine.UI.Image>();
+            bgImage.color = new Color(0.3f, 0.3f, 0.3f, 0.8f);
             
-            // Fill image
-            var fillGO = new GameObject("Fill");
+            // 血条填充
+            var fillGO = new GameObject("HealthFill");
             fillGO.transform.SetParent(healthBarGO.transform);
-            var fillImage = fillGO.AddComponent<UnityEngine.UI.Image>();
-            fillImage.color = Color.red;
             var fillRect = fillGO.GetComponent<RectTransform>();
+            if (fillRect == null) fillRect = fillGO.AddComponent<RectTransform>();
             fillRect.anchorMin = Vector2.zero;
-            fillRect.anchorMax = new Vector2(1, 1);
+            fillRect.anchorMax = new Vector2(1f, 1f); // 初始满血
             fillRect.offsetMin = Vector2.zero;
             fillRect.offsetMax = Vector2.zero;
             
+            var fillImage = fillGO.AddComponent<UnityEngine.UI.Image>();
+            fillImage.color = new Color(0.2f, 0.8f, 0.2f, 1f); // 绿色
+            
+            // 创建一个简单的slider来控制fillRect的宽度
+            enemyHealthSlider = enemyHealthBar.AddComponent<UnityEngine.UI.Slider>();
             enemyHealthSlider.fillRect = fillRect;
+            enemyHealthSlider.interactable = false;
+            enemyHealthSlider.minValue = 0f;
+            enemyHealthSlider.maxValue = 1f;
+            enemyHealthSlider.value = 1f;
+            
+            Debug.Log($"[SimpleCameraController] 创建简化血条，fillImage颜色: {fillImage.color}");
         }
         
         private void UpdateUI()
@@ -560,88 +575,84 @@ namespace Camera
                 
                 if (aiStats != null)
                 {
-                    string status = $"<b>{currentAI.name}</b>\n\n";
+                    string status = $"<b>{currentAI.name}</b>\n";
                     
-                    // Basic stats
-                    status += $"<color=#90EE90>生命: {aiStats.GetStat(AI.Stats.StatType.Health):F0}/{aiStats.Config?.maxHealth:F0}</color>\n";
-                    status += $"<color=#FFA500>饥饿: {aiStats.GetStat(AI.Stats.StatType.Hunger):F0}/{aiStats.Config?.maxHunger:F0}</color>\n";
-                    status += $"<color=#87CEEB>口渴: {aiStats.GetStat(AI.Stats.StatType.Thirst):F0}/{aiStats.Config?.maxThirst:F0}</color>\n";
-                    status += $"<color=#FFFF00>体力: {aiStats.GetStat(AI.Stats.StatType.Stamina):F0}/{aiStats.Config?.maxStamina:F0}</color>\n\n";
+                    // Basic stats - 紧凑显示
+                    status += $"<color=#90EE90>生命:{aiStats.GetStat(AI.Stats.StatType.Health):F0}/{aiStats.Config?.maxHealth:F0}</color> ";
+                    status += $"<color=#FFA500>饥饿:{aiStats.GetStat(AI.Stats.StatType.Hunger):F0}</color>\n";
+                    status += $"<color=#87CEEB>口渴:{aiStats.GetStat(AI.Stats.StatType.Thirst):F0}</color> ";
+                    status += $"<color=#FFFF00>体力:{aiStats.GetStat(AI.Stats.StatType.Stamina):F0}</color>\n";
                     
-                    // Mood - using GetMood with MoodDimension
-                    status += $"情绪: {aiStats.GetMood(AI.Stats.MoodDimension.Emotion):F1}\n";
-                    status += $"社交: {aiStats.GetMood(AI.Stats.MoodDimension.Social):F1}\n";
-                    status += $"心态: {aiStats.GetMood(AI.Stats.MoodDimension.Mentality):F1}\n\n";
+                    // Mood - 一行显示
+                    status += $"情绪:{aiStats.GetMood(AI.Stats.MoodDimension.Emotion):F1} ";
+                    status += $"社交:{aiStats.GetMood(AI.Stats.MoodDimension.Social):F1} ";
+                    status += $"心态:{aiStats.GetMood(AI.Stats.MoodDimension.Mentality):F1}\n";
                     
-                    // Current state - using reflection to access private field
+                    // Current state and target - 一行显示
                     var stateField = typeof(AIBrain).GetField("currentState", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                     if (stateField != null)
                     {
                         var state = stateField.GetValue(currentAI);
-                        status += $"<color=#FF69B4>状态: {state}</color>\n";
+                        status += $"<color=#FF69B4>状态:{state}</color>";
                     }
                     
-                    // Target - using reflection to access private field
+                    // Target - 同一行
                     var targetField = typeof(AIController).GetField("currentTarget", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                     if (aiController != null && targetField != null)
                     {
                         var target = targetField.GetValue(aiController) as GameObject;
                         if (target != null)
                         {
-                            status += $"目标: {target.name}\n";
+                            status += $" <color=#FFFF00>目标:{target.name}</color>";
                         }
                     }
+                    status += "\n";
                     
-                    status += "\n<b>DeepSeek决策</b>\n";
+                    status += "<b>DeepSeek决策</b>\n";
                     
-                    // Get DeepSeek decision info using reflection
+                    // Get DeepSeek decision info - 紧凑显示
                     var lastDecisionField = typeof(AIBrain).GetField("lastDecision", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                     if (lastDecisionField != null)
                     {
                         var lastDecision = lastDecisionField.GetValue(currentAI) as AI.Decision.AIDecision;
                         if (lastDecision != null && !string.IsNullOrEmpty(lastDecision.Explanation))
                         {
-                            status += $"<color=#98FB98>规划: {lastDecision.Explanation}</color>\n";
-                            if (lastDecision.SpecificActions != null && lastDecision.SpecificActions.Count > 0)
-                            {
-                                status += "行动:\n";
-                                foreach (var action in lastDecision.SpecificActions)
-                                {
-                                    status += $"  • {action}\n";
-                                }
-                            }
+                            // 截取前40个字符
+                            string shortPlan = lastDecision.Explanation.Length > 40 ? 
+                                              lastDecision.Explanation.Substring(0, 40) + "..." : 
+                                              lastDecision.Explanation;
+                            status += $"<color=#98FB98>规划:{shortPlan}</color>\n";
                         }
                         else
                         {
-                            status += "<color=#808080>规划: 暂无</color>\n";
+                            status += "<color=#808080>规划:暂无</color>\n";
                         }
                     }
                     else
                     {
-                        status += "<color=#808080>规划: 暂无</color>\n";
+                        status += "<color=#808080>规划:暂无</color>\n";
                     }
                     
-                    // Get recent communications from memory
+                    // Get recent communications - 只显示最新一条
                     var memoryField = typeof(AIBrain).GetField("memory", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                     if (memoryField != null)
                     {
                         var memory = memoryField.GetValue(currentAI) as AI.Core.AIMemory;
                         if (memory != null)
                         {
-                            var recentEvents = memory.GetRecentEvents(3);
+                            var recentEvents = memory.GetRecentEvents(1);
                             var commEvents = recentEvents.Where(e => e.EventType == AI.Core.EventType.Communication).ToList();
                             
-                            status += "\n<b>最近对话</b>\n";
                             if (commEvents.Count > 0)
                             {
-                                foreach (var evt in commEvents)
-                                {
-                                    status += $"<color=#DDA0DD>{evt.Description}</color>\n";
-                                }
+                                string dialogue = commEvents[0].Description.Length > 35 ?
+                                                commEvents[0].Description.Substring(0, 35) + "..." :
+                                                commEvents[0].Description;
+                                status += $"<color=#DDA0DD>对话:{dialogue}</color>\n";
                             }
                             else
                             {
-                                status += "<color=#808080>对话: 暂无</color>\n";
+                                status += "<color=#808080>对话:暂无</color>\n";
                             }
                         }
                     }
@@ -653,9 +664,9 @@ namespace Camera
             // Update enemy health bar
             if (currentEnemy != null && enemyHealthSlider != null)
             {
-                // Use reflection to get health values since they are protected
-                var healthField = typeof(Enemy2D).GetField("currentHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                var maxHealthField = typeof(Enemy2D).GetField("maxHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                // Use reflection to get health values since they are protected/private
+                var healthField = typeof(Enemy2D).GetField("currentHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
+                var maxHealthField = typeof(Enemy2D).GetField("maxHealth", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
                 
                 if (healthField != null && maxHealthField != null)
                 {
@@ -664,7 +675,7 @@ namespace Camera
                     float healthPercent = maxHealth > 0 ? currentHealth / maxHealth : 0;
                     enemyHealthSlider.value = healthPercent;
                     
-                    // Show control mode indicator
+                    // Show control mode indicator with smaller text
                     if (isControllingEnemy && enemyHealthBar != null)
                     {
                         var title = enemyHealthBar.transform.Find("Title");
@@ -674,11 +685,11 @@ namespace Camera
                             titleGO.transform.SetParent(enemyHealthBar.transform);
                             var titleText = titleGO.AddComponent<TMPro.TextMeshProUGUI>();
                             
-                            // Show enemy type
+                            // Show enemy type with smaller font
                             string enemyType = currentEnemy is RangedEnemy2D ? "远程敌人" : "近战敌人";
                             titleText.text = $"{enemyType} - 控制模式 - WASD移动，左键攻击";
                             
-                            titleText.fontSize = 12;
+                            titleText.fontSize = 10; // 减小字体大小
                             titleText.alignment = TMPro.TextAlignmentOptions.Center;
                             titleText.color = Color.white;
                             var titleRect = titleGO.GetComponent<RectTransform>();
@@ -689,23 +700,54 @@ namespace Camera
                         }
                     }
                 
-                    // Change color based on health
-                var fillImage = enemyHealthSlider.fillRect.GetComponent<UnityEngine.UI.Image>();
-                if (fillImage != null)
-                {
-                    if (healthPercent > 0.6f)
-                        fillImage.color = Color.green;
-                    else if (healthPercent > 0.3f)
-                        fillImage.color = Color.yellow;
+                    // 直接通过血条GameObject查找fillImage
+                    var healthFill = enemyHealthBar.transform.Find("HealthBarDisplay/HealthFill");
+                    if (healthFill != null)
+                    {
+                        var fillImage = healthFill.GetComponent<UnityEngine.UI.Image>();
+                        if (fillImage != null)
+                        {
+                            Color newColor;
+                            if (healthPercent > 0.6f)
+                            {
+                                // 健康：鲜绿色
+                                newColor = new Color(0.2f, 0.8f, 0.2f, 1f);
+                            }
+                            else if (healthPercent > 0.3f)
+                            {
+                                // 受伤：橙黄色
+                                newColor = new Color(1f, 0.6f, 0.1f, 1f);
+                            }
+                            else
+                            {
+                                // 危险：鲜红色
+                                newColor = new Color(0.9f, 0.1f, 0.1f, 1f);
+                            }
+                            
+                            fillImage.color = newColor;
+                            
+                            // 调试信息
+                            if (Time.frameCount % 60 == 0) // 每秒输出一次
+                            {
+                                Debug.Log($"[SimpleCameraController] 血条更新: 敌人{currentEnemy.name}, 当前血量{currentHealth:F0}/{maxHealth:F0} ({healthPercent:P0}), 颜色{newColor}");
+                            }
+                        }
+                        else
+                        {
+                            Debug.LogWarning("[SimpleCameraController] HealthFill的Image组件为null!");
+                        }
+                    }
                     else
-                        fillImage.color = Color.red;
+                    {
+                        Debug.LogWarning("[SimpleCameraController] 找不到HealthFill对象!");
                     }
                 }
             }
             }
             catch (System.Exception e)
             {
-                UnityEngine.Debug.LogError($"[SimpleCameraController] UpdateUI error: {e.Message}\n{e.StackTrace}");
+                // 不使用LogError避免触发Unity的Error Pause
+                UnityEngine.Debug.LogWarning($"[SimpleCameraController] UpdateUI error: {e.Message}");
             }
         }
         

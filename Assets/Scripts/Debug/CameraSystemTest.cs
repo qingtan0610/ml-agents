@@ -22,15 +22,15 @@ namespace Debugging
             
             UnityEngine.Debug.Log($"[CameraSystemTest] Main camera found at: {mainCamera.transform.position}");
             
-            // Check camera manager
-            var cameraManager = mainCamera.GetComponent<CameraManager>();
-            if (cameraManager == null)
+            // Check camera controller
+            var cameraController = mainCamera.GetComponent<global::Camera.SimpleCameraController>();
+            if (cameraController == null)
             {
-                UnityEngine.Debug.LogWarning("[CameraSystemTest] No CameraManager found on main camera");
+                UnityEngine.Debug.LogWarning("[CameraSystemTest] No SimpleCameraController found on main camera");
             }
             else
             {
-                UnityEngine.Debug.Log("[CameraSystemTest] CameraManager is active");
+                UnityEngine.Debug.Log("[CameraSystemTest] SimpleCameraController is active");
             }
             
             // Test input system

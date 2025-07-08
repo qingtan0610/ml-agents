@@ -213,8 +213,8 @@ namespace AI.Core
             // 防止组件为空导致卡死
             if (aiStats == null || aiStats.Config == null || inventory == null || perception == null)
             {
-                // 添加默认观察值: 5(状态) + 7(背包) + 27(房间) + 15(敌人) + 12(NPC) + 20(物品) + 8(墙壁) + 8(记忆) + 12(其他AI) = 114
-                for (int i = 0; i < 114; i++)
+                // 添加默认观察值: 11(状态) + 7(背包) + 27(房间) + 15(敌人) + 12(NPC) + 20(物品) + 8(墙壁) + 8(记忆) + 12(其他AI) + 17(目标) = 137
+                for (int i = 0; i < 137; i++)
                 {
                     sensor.AddObservation(0f);
                 }
@@ -426,22 +426,24 @@ namespace AI.Core
                 
                 // 5. 其他AI信息 (12个值) - 3个AI x 4值（位置、生命、是否求救）
                 var otherAIs = GameObject.FindGameObjectsWithTag("Player");
-                int aiIndex = 0;
+                var validOtherAIs = new System.Collections.Generic.List<GameObject>();
+                foreach (var ai in otherAIs)
+                {
+                    if (ai != gameObject)
+                        validOtherAIs.Add(ai);
+                }
+                
                 for (int i = 0; i < 3; i++)
                 {
-                    if (aiIndex < otherAIs.Length)
+                    if (i < validOtherAIs.Count)
                     {
-                        var otherAI = otherAIs[aiIndex];
-                        if (otherAI != gameObject)
-                        {
-                            Vector2 relativePos = (Vector2)otherAI.transform.position - (Vector2)transform.position;
-                            sensor.AddObservation(relativePos.x / 50f); // 更大的归一化范围
-                            sensor.AddObservation(relativePos.y / 50f);
-                            var otherStats = otherAI.GetComponent<AIStats>();
-                            sensor.AddObservation(otherStats?.CurrentHealth / otherStats?.Config.maxHealth ?? 0f);
-                            sensor.AddObservation(otherStats?.CurrentHealth < otherStats?.Config.maxHealth * 0.3f ? 1f : 0f); // 是否需要帮助
-                            aiIndex++;
-                        }
+                        var otherAI = validOtherAIs[i];
+                        Vector2 relativePos = (Vector2)otherAI.transform.position - (Vector2)transform.position;
+                        sensor.AddObservation(relativePos.x / 50f);
+                        sensor.AddObservation(relativePos.y / 50f);
+                        var otherStats = otherAI.GetComponent<AIStats>();
+                        sensor.AddObservation(otherStats?.CurrentHealth / otherStats?.Config.maxHealth ?? 0f);
+                        sensor.AddObservation(otherStats?.CurrentHealth < otherStats?.Config.maxHealth * 0.3f ? 1f : 0f);
                     }
                     else
                     {
@@ -472,9 +474,9 @@ namespace AI.Core
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"[AIBrain] CollectObservations异常: {e.Message}");
+                Debug.LogWarning($"[AIBrain] CollectObservations异常: {e.Message}");
                 // 在异常情况下添加默认观察值
-                for (int i = 0; i < 114; i++)
+                for (int i = 0; i < 137; i++)
                 {
                     sensor.AddObservation(0f);
                 }
